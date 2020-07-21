@@ -1,0 +1,2056 @@
+#include <stdio.h>// directive de préprocesseur
+#include <stdlib.h>// directive de préprocesseur
+
+#include <ctype.h> //bibliothèque permettant la conversion de caractères
+#include <time.h> //bibliothèque pour le temps
+#include <windows.h>//bibliothèque pour les couleurs
+#include <locale.h>// bibliothèque utilisée pour afficher é/è/à sans passer par les %c
+#include <string.h> // bibliothèque pour utiliser une fonction afin de mettre une chaine de caractère en minuscule
+
+#define NB_LETTRES 40 //le nombre de caractères pour un mot
+#define NB_MOTS_MAX 50//le nombre de lettre max d'une chaine de caractères
+#define FREQUENT 20 // le nombre de fois qu'un mot est utilisé et qu'on définit comme un mot facile
+#define PEU_FREQUENT 10 // le nombre de fois que le mot est utilisé et qu'on définit comme intermediare
+#define NUM_CARTE_BC 16 // le numero de carte bancaire
+#define MOIS_EXPI 2 // le mois d'expiration de la carte
+#define ANNEE_EXPI 2 // l'année d'expiration de la carte
+#define CLEFSECU 3 // la clef de securité de la carte bancaire
+
+/*________________________
+ Paul Collomb
+ Myra-Louise Bamdé
+ Début du projet :20/02/19
+ Soutenance : 18/04/19
+ PROJET : 94 secondes
+__________________________*/
+
+struct Mot // données relatives aux mots
+{
+    char mot[NB_LETTRES+1]; // le mot du thème
+    int point; // le nombre de points que rapporte le mot
+    int apparition; // total d'apparition du mot au cours des parties
+};
+
+struct Lettre //données relatives aux lettres
+{
+    char lettre; // la premiere lettre du mot
+    int taille_lettre; //nbre de mots pour la lettre
+    struct Mot *tabMots; //tableau contenant les mots
+};
+
+struct Theme // données relative aux thèmes
+{
+    char nom_theme[NB_LETTRES+1]; // le nom du thème
+    int taille_theme; // le nombre de lettre dans le thème
+    struct Lettre *tabLettres; //tableau contenant toutes les lettres du thème
+};
+struct Classement // données relatives au classement
+{
+    char nom[NB_LETTRES+1]; // le nom du joueur
+    int score; // le score du joueur
+};
+struct Joueur // données relatives au joueur
+{
+    char mot_de_passe [NB_LETTRES+1]; // le mot de passe
+    char nom [NB_LETTRES+1]; // le nom du joueur
+    int nb_joker; // le nombre de jokers qui reste au joueur
+    int meilleur_score; // le meilleur score d'un joueur
+    int score_moy; // le score moyen du joueur
+    int nbre_parties; // le nombre de parties jouées
+    int Score_tot; // le score total du joueur
+    char nb_carte[16+1];// les 16 numeros d'une carte bancaire
+    char mois_expiration[2+1];// le mois d'expiration
+    char annee_expiration[2+1];// l'année d'expiration
+    char clef_secu[3+1];// la clef de sécurité de la carte
+    int nbre_ToM; // le nombre de ToM ( monnaie virtuelle)
+};
+//sous programmes chargements
+void CHARGEMENT_THEMES (struct Theme **tab, int *taille, int *nb_mots ); // charger le ficher contenant les thèmes
+void SAUVEGARDE_THEMES(int taille,int nb_mots, struct Theme *tab);// sauvegarder le ficher contenant les thèmes
+
+void CHARGEMENT_CLASSEMENT (int *tailleClassement, struct Classement **tabClassement); // charger le ficher contenant le classement
+void SAUVEGARDE_CLASSEMENT(int tailleClassement,struct Classement *tabClassement);// sauvegarder le ficher contenant le classement
+
+void SAUVEGARDE_JOUEUR(struct Joueur joueur); // sauvegarder les données du joueurs
+
+//sous programmes creation / connexion compte joueur
+void CONNEXION_NEW_JOUEUR (struct Joueur *joueur, int *retour,struct Classement **tabClassement, int *tailleClassement); // creer un nouveau compte
+struct Joueur CONNEXION_JOUEUR(int *retour); // se connecter à un compte existant
+void NEW_JOUEUR_CLASSEMENT(struct Classement **tabClassement, int *tailleClassement, struct Joueur joueur); //ajouter le nouveau joueur dans le ficher classement
+
+//sous programmes relatifs au jeu
+void JEUX(struct Theme *tab, int taille,struct Joueur *joueur,char tabMotDejaTapes[NB_MOTS_MAX][NB_LETTRES+1]); // le jeu principal
+void TIRAGE_AU_SORT (struct Theme *tab,int taille, int *theme_tire_sort,int *num_lettre_tiree_sort); //tirer au sort un thème et une lettre
+void VERIFICATION_MOT_DEJA_TAPE ( char mot_tape[NB_LETTRES+1],char tabMotDejaTapes[NB_MOTS_MAX][NB_LETTRES+1], int nombre_mot);//Verifier que le joueur ne tape pas les mêmes mot au cours d'une partie
+void VERIFICATION_MOT_JUSTE(struct Theme *tab,char mot_tape[NB_LETTRES+1],char Lettre_tiree_au_sort, int theme_tire_sort, int num_lettre_tiree_sort, int *point_mot_trouve,int *nombre_mots,char tabMotDejaTapes[31][NB_LETTRES+1]);//chercher si la reponse du joueur est juste
+void BOULE_DE_CRISTAL (struct Theme *tab, int taille,int *scoreBoule,char tabMotDejaTapes[NB_MOTS_MAX][NB_LETTRES+1],int *nombre_mot,double *secondeBC);// Joker Boule de Cristal
+void AFFECTER_SCORE_MOY_CLASSEMENT(struct Joueur joueur,struct Classement *tabClassement,int tailleClassement);
+
+//sous programmes relatifs aux données du joueur / du thèmes
+void COMPTE_JOUEUR (struct Joueur *joueur,struct Classement *tabClassement, int tailleClassement);// interface ou le joueur peut voir ses données
+void CLASSEMENT_JOUEURS (int tailleClassement,struct Classement *tabClassement);//faire le classement des joueurs
+void ACHAT_JOKER(struct Joueur *joueur, struct Classement *tabClassement, int tailleClassement);
+void NUM_CARTE(struct Joueur *joueur);//verification des 16 numeros de carte bancaire
+void EXPI_MOIS(struct Joueur *joueur);//vérification du mois d'expiration à deux chiffres de la carte bancaire (compris entre 1 et 12)
+void EXPI_ANNEE(struct Joueur *joueur);//Vérification des deux derniers chiffres de l'année d'expiration
+void CLEF_SECU(struct Joueur *joueur);//Vérification pour les 3 chiffres de la clé de sécurité de la carte
+
+void AJOUT_THEME(struct Theme **tab, int *taille,int *nb_mots); // ajouter un thème dans le fichier existant
+void AJOUT_MOT (struct Theme **tab, int *taille,int *nb_mots); //ajouter un mot dans un thème existant
+void REMPLIR_TAB_MOTS(int numLettre, int numTheme, struct Theme *tab, char PremLettre, char mot_tape[NB_LETTRES+1],int cpt,int ajout_theme);// remplir le tableau de mots
+void APPARITION (struct Theme *tab, int taille, int nb_mots);// changer les points des mots en fonction de leur apparition
+
+//sous programme de verification
+void VERIFICATION_CHOIX_OUI_NON(int *choix); // verifer que le joueur tape 1 ou 2 pour une questions
+
+//sous programmes d'affichage
+void PAGE_ACCEUIL (); //page d'acceuil du projet
+void LOGO(); // logo principal du jeu
+void LOGO2 ();// logo secondaire
+int MENU_PRINCIPAL();// Menu principal du jeu
+int MENU_JOUEUR();// Menu du joueur
+int MENU_REGLE();// Menu des règles du jeu
+void REGLES_COURTES(); // Résumé des règles
+int MENU_AJOUT_THEMES_MOTS(); // Menu concernant l'ajout mot / thème
+void AFFICHAGE_CLASSEMENT(int tailleClassement,struct Classement *tabClassement,struct Joueur joueur);//le classement par rapport aux autres joueurs
+void AFFICHAGE_NOMS_THEMES (struct Theme *tab, int taille);// affichage des thèmes du jeu
+void UN();// compte à rebours
+void DEUX();// compte à rebours
+void TROIS();// compte à rebours
+void COMPTE_A_REBOURS();// compte à rebours
+void COULEUR(int texte, int fond); // couleur
+
+
+int main()
+{
+    setlocale (LC_ALL,""); // permet d'afficher directement les caractères speciaux
+    srand(time(NULL));// initialiser le compteur de générateur de nombre aléatoire
+
+    // Déclaration des variables
+    int choix1,choix2=0,choix3,choix_joueur,choix_ajout_mots_themes;// variables correspondant aux choix de l'utilisateur dans les différents menu
+    int taille=0;// la taille du tableau de theme de départ initialisée à 0
+    int tailleClassement=0; // la taille du tableau avec les classement initialisée à 0
+    int nb_mots=0;
+    int point_mot_trouve;// le score du mot trouvé
+    int theme_tire_sort,num_lettre_tiree_sort;// le numero du theme et de la lettre tirée au sort
+    int nombre_mots;// le nombre de mot tapé au cours d'une parte
+    int i,cpt;//des compteurs
+    int ajout_theme;// variable pour exécuter une partie du sous programme REMPLIR_TAB_MOT
+
+    char mot_tape[NB_LETTRES+1]; // le mot tapé par l'utilisateur
+    char tabMotDejaTapes[NB_MOTS_MAX][NB_LETTRES+1]; // le tableau de 30 cases de NB_LETTREs+1 chaines de caractères
+    char PremLettre; // la lettre tapée pour ajouter un mot dans un theme
+    char Lettre_tiree_au_sort;// la lettre tirée au sort
+
+    double secondeBC; // le temps passé dans la boule de cristal
+
+    struct Theme *tab=NULL;//declarer le tableau tab de type Theme
+    struct Joueur joueur; //declarer joueur de type Joueur
+    struct Classement *tabClassement=NULL;// declarer le tabClassement de type Classement
+
+    //chargement des différents fichiers
+    CHARGEMENT_THEMES(&tab,&taille,&nb_mots);// chargement du fichier contenant la totalité des thèmes et des mots
+    CHARGEMENT_CLASSEMENT(&tailleClassement,&tabClassement);// chargement du classement de tous les joueurs
+    for (i=0; i<30; i++)
+    {
+        strcpy(tabMotDejaTapes[i],"rien");// Copier "rien" dans toutes les cases du tableau
+    }
+    PAGE_ACCEUIL(); // page de présentation du projet
+
+    while(choix1!=4) // tant que le joueur ne veut pas quitter le programme faire
+    {
+        choix1=MENU_PRINCIPAL();// afficher le menu principal du jeu
+
+        if (choix1==1)//Si le joueur veut se connecter
+        {
+            joueur=CONNEXION_JOUEUR(&choix_joueur);//connexion du joueur
+
+            while(choix_joueur!=5) // tant que le joueur ne veut pas quitter l'interface joueur faire
+            {
+                choix_joueur=MENU_JOUEUR();//afficher le menu joueur
+
+                if (choix_joueur==1)//si le joueur veut jouer
+                {
+                    JEUX(tab,taille,&joueur,tabMotDejaTapes);// lancer le jeu
+                    SAUVEGARDE_JOUEUR(joueur); // faire la sauvegarde des données du joueur au cas ou il quitte brusquement le programme
+                    AFFECTER_SCORE_MOY_CLASSEMENT(joueur,tabClassement,tailleClassement);// mettre a jour son score moyen dans le classement
+                    APPARITION(tab,taille,nb_mots);// pondérer les points de mots des thèmes
+                }
+                else if (choix_joueur==2)// s'il veut consulter ses données
+                {
+                    COMPTE_JOUEUR(&joueur,tabClassement,tailleClassement);// afficher ses statistiques
+
+                }
+                else if (choix_joueur==3)// s'il veut ajouter un mot ou un theme
+                {
+                    system("cls");
+                    while (choix_ajout_mots_themes!=3)// tant que le joueur veut ajouter des mots ou tes thèmes
+                    {
+
+                        choix_ajout_mots_themes=MENU_AJOUT_THEMES_MOTS();// afficher le menu ajout theme\mot
+                        if ( choix_ajout_mots_themes==1)// s'il choisit d'ajouter un mot
+                        {
+
+                            AJOUT_MOT(&tab,&taille,&nb_mots);
+                        }
+                        else if (choix_ajout_mots_themes==2)// s'il veut ajouter un thème
+                        {
+
+                            AJOUT_THEME(&tab,&taille,&nb_mots);
+                        }
+                        system("cls");
+                    }
+
+                }
+                else if (choix_joueur==4)// s'il veut relire les règles
+                {
+                    REGLES_COURTES();
+                }
+            }
+        }
+        else if (choix1==2)// s'il veut creer un nouveau compte
+        {
+            CONNEXION_NEW_JOUEUR(&joueur,&choix1,&tabClassement,&tailleClassement);// lancer la creation d'un compte
+
+        }
+        else if (choix1==3)// s'il veut lire en détail les règles
+        {
+            while (choix2!=5)
+            {
+                choix2=MENU_REGLE();// afficher le menu des règles
+                if(choix2==1)//Lire à propos de la connexion / creation d'un compte
+                {
+                    system("cls");
+                    LOGO2();// affichage du logo
+                    printf("        Tu as la possibilité de créer un compte joueur.\nPour cela il te faudra penser à un nom d'utilisateur et un mot de passe.\n"
+                           "        Une fois ton compte créé, tu pourras te connecter et intéragir avec l'interface joueur.\n");
+                    system("PAUSE");
+                    system("cls");
+                }
+                else if (choix2==2)// lire les règles de 94'
+                {
+                    system("cls");
+                    LOGO2();
+                    printf("        Le but de 94' est de taper le plus de mots possibles en 94 secondes\n Afin d'y parvenir tu dois taper les mots en MINUSCULES, SANS ACCENT et SANS ESPACE (tu utiliseras _ pour signifier l'espace)\n"
+                           "Si tu ne respectes pas ces règles tu auras automatiquement faux\n"
+                           "        Une bonne réponse te rapporte entre 1 et 3 points en fonction de la difficulté du mot.\nD'ailleurs plus un mot est trouvé moins il vaudra de points\n"
+                           "        Une mauvaise réponse ne fait pas perdre de points ni de temps\nPar contre si tu décides de passer la question en tapant \"p\" alors tu perdras 3sec\n"
+                           "        Tu peux aussi taper \"j\" pour accéder aux jokers\n"
+                           "        Pour avoir les détails des différents jokers n'hésite pas à aller dans la section 3 des Règles du jeu\n\n"
+                           "        Et voilà, tu connais tout sur 94'\n");
+                    system("PAUSE");
+                    system("cls");
+                }
+                else if (choix2==3)// lire les règles à propos des jokers
+                {
+                    system("cls");
+                    LOGO2();
+                    printf("            Les Jokers de 94'\n"
+                           "  Tu as 3 types de Jokers :\n"
+                           "    -Le Chapeau : il permet d'obtenir une bonne réponse lorsque tu as un trou de mémoire\n"
+                           "    -Le Cadeneas : tu peux taper plusieurs mot correspondant au même thème\n"
+                           "    -La Boule de Cristal : tu vois les 10 prochains thèmes et lettres qui vont tomber\n"
+                           "Tu as 10 jokers à ta disposition à la création de ton compte\nTu as la possiblité d'en acheter dans ton espace joueur\n"
+                           "Pour accéder dans le jeu au joker, tape 'j'\n"
+                          );
+                    printf("\n\n\n");
+                    system("PAUSE");
+                    system("cls");
+                }
+                else if (choix2==4)// lire à propos de l'ajout theme/mot
+                {
+                    system("cls");
+                    LOGO2();
+                    printf("Tu as la possiblité d'ajouter des thèmes et des mots dans ce jeu\n Pour cela va dans la section Ajout Thème\\Mot qui s'affichera lorsque tu seras connecté\n");
+                    system("PAUSE");
+                    system("cls");
+                }
+            }
+            system("cls");
+        }
+        else if (choix1==4)// quitter le jeu
+        {
+            system("cls");
+            printf("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+            LOGO();
+            printf("                                              A bientôt\n");
+        }
+    }
+    return 0;
+}
+void CHARGEMENT_THEMES (struct Theme **tab, int *taille, int *nb_mots )//charger le fichier avec tous les thèmes pour jouer
+{
+    FILE *fich; // le fichier
+    char passage;// variable pour lire le passage à la ligne
+    char nomFichier[NB_LETTRES+1]="theme7_test.txt";//le nom du fichier
+    int i; // un compteur pour parcourir tous les thèmes
+    int comptLettres; // compteur pour le nombre de lettres
+    int comptMotsParLettre; // compteur pour le nombre de mots
+
+    fich=fopen(nomFichier,"r"); //ouvrir le fichier en lecture
+
+    if (fich==NULL) //si on ne trouve pas le ficher
+    {
+        printf("Ce fichier n'existe pas\n");
+        *tab=NULL;
+    }
+    else //sinon
+    {
+         fscanf(fich,"%d",&*nb_mots);
+        fscanf(fich,"%d",&*taille); // lire le nombre de thèmes dans le fichier
+        *tab=malloc((*taille)*sizeof(struct Theme));// creer le tableau pour acceuillir les 11 thèmes
+        for (i=0; i<*taille; i++) //pour les tous thèmes
+        {
+            fscanf(fich,"%s",& (*tab)[i].nom_theme); // lire le nom du theme
+            fscanf(fich,"%d",&(*tab)[i].taille_theme); // lire le nombre de lettre dans le theme
+            (*tab)[i].tabLettres=malloc(((*tab)[i].taille_theme)*sizeof(struct Lettre));// on crée un tableau pour les lettres
+            for (comptLettres=0; comptLettres<(*tab)[i].taille_theme; comptLettres++)// pour toutes les lettres du thème
+            {
+                fscanf(fich,"%c",&passage);//« forcer » le programme à passer à la ligne
+                fscanf(fich,"%c",&((*tab)[i].tabLettres[comptLettres].lettre)); //lire la lettre du thème
+                fscanf(fich,"%d",&((*tab)[i].tabLettres[comptLettres].taille_lettre));//lire le nombre de lettres du thème
+                (*tab)[i].tabLettres[comptLettres].tabMots = malloc(((*tab)[i].tabLettres[comptLettres].taille_lettre)*sizeof(struct Mot));//creer le tableau de mot
+                for (comptMotsParLettre=0; comptMotsParLettre<(*tab)[i].tabLettres[comptLettres].taille_lettre; comptMotsParLettre++)//pour tous les mots de la lettre
+                {
+                    fscanf(fich,"%s",&((*tab)[i].tabLettres[comptLettres].tabMots[comptMotsParLettre].mot));//lire le mot
+                    fscanf(fich,"%d",& ((*tab)[i].tabLettres[comptLettres].tabMots[comptMotsParLettre].point));//lire le nombre de points du mot
+                    fscanf(fich,"%d",& ((*tab)[i].tabLettres[comptLettres].tabMots[comptMotsParLettre].apparition));//lire l'apparition du mot
+                }
+            }
+        }
+        fclose(fich); //fermer le ficher
+    }
+}
+void SAUVEGARDE_THEMES(int taille,int nb_mots, struct Theme *tab)//sauvegarder le fichiers avec les thèmes
+{
+    FILE *fich;// le fichier
+    int i,j,k; // des compteurs
+    char nomFichier[NB_LETTRES+1]="theme7_test.txt";//le nom du fichier
+
+    fich=fopen(nomFichier,"w"); // ouverture du fichier en mode ecriture
+ fprintf(fich,"%d\n",nb_mots);//écrire le nombre de thèmes du fichier
+    fprintf(fich,"%d\n",taille);//écrire le nombre de thèmes du fichier
+    for (i=0; i<taille; i++) //pour tous les thèmes
+    {
+        fprintf(fich,"%s\n",(tab)[i].nom_theme);//ecrire le nom du theme
+        fprintf(fich,"%d\n",(tab)[i].taille_theme);//ecrire le nombre de lettres dans le thème
+        for(k=0; k<(tab)[i].taille_theme; k++)// pour toutes les lettres du thèmes
+        {
+            fprintf(fich,"%c\n",(tab)[i].tabLettres[k].lettre);//ecrire la lettre
+            fprintf(fich,"%d\n",(tab)[i].tabLettres[k].taille_lettre); //ecrire le nombre de mots de la lettre
+            for (j=0; j<(tab)[i].tabLettres[k].taille_lettre; j++)// pour tous les mots de la lettre
+            {
+                fprintf(fich,"%s\n",(tab)[i].tabLettres[k].tabMots[j].mot);//ecire le mot
+                fprintf(fich,"%d\n",(tab)[i].tabLettres[k].tabMots[j].point); //ecrire le nombre de points du mot
+                fprintf(fich,"%d\n",(tab)[i].tabLettres[k].tabMots[j].apparition);//ecrire le nombre d'apparitions
+            }
+        }
+    }
+    fclose(fich); //fermer le fichier
+}
+
+void CHARGEMENT_CLASSEMENT (int *tailleClassement, struct Classement **tabClassement)// le ficher contenant le classement des joueurs
+{
+
+    int i;
+    char nomFichier[NB_LETTRES+1]="Classement_general.txt";
+    FILE *fich; // le ficher
+    fich=fopen(nomFichier,"r");//ouvrir le fichier en mode lecture
+    if (fich==NULL)//Si on ne trouve pas le ficher
+    {
+        printf("Ce fichier n'existe pas\n");
+        *tabClassement=NULL;
+    }
+    else
+    {
+        fscanf(fich,"%d",&(*tailleClassement)); //lire le nombre de joueurs du classement
+        *tabClassement=malloc((*tailleClassement)*sizeof(struct Classement));  //Creer le tableau
+
+        for (i=0; i<*tailleClassement; i++)//pour tous les joueurs
+        {
+            fscanf(fich,"%s",&((*tabClassement)[i].nom));//lire le nom
+            fscanf(fich,"%d",&((*tabClassement)[i].score));//lire le score
+        }
+        fclose(fich); // fermeture du ficher
+    }
+}
+
+void SAUVEGARDE_CLASSEMENT(int tailleClassement,struct Classement *tabClassement)//sauvegarder le classement
+{
+    int i=0;
+    char nomFichier[NB_LETTRES+1]="Classement_general.txt";
+    FILE *fich;
+    fich=fopen(nomFichier,"w"); // ouverture du fichier en mode ecriture
+    fprintf(fich,"%d\n",tailleClassement);
+    for (i=0; i<tailleClassement; i++) //pour tous les joueurs du classement
+    {
+        fprintf(fich,"%s\n",tabClassement[i].nom);//sauvegarder le nom
+        fprintf(fich,"%d\n",tabClassement[i].score);//Sauvegarder le score
+    }
+    fclose(fich); //fermer le ficher
+}
+void SAUVEGARDE_JOUEUR(struct Joueur joueur)// sauvegarder le compte joueur
+{
+    FILE *fich;// le fichier
+    char nomFichier[NB_LETTRES+1];// le nom du ficher
+
+    sprintf(nomFichier,"Joueurs\\%s.txt",joueur.nom); // nommer le fichier texte d'apres le nom du joueur dans le dossier joueur
+
+    fich=fopen(nomFichier,"w");//ouvrir le fichier en mode ecriture
+
+    fprintf(fich,"%s\n",joueur.nom);//ecrire le nom du joueur
+    fprintf(fich,"%s\n",joueur.mot_de_passe);//ecrire le mot de passe
+    fprintf(fich,"%d\n",joueur.nb_joker);//ecrire le nombre de jockers restant
+    fprintf(fich,"%d\n",joueur.meilleur_score);//ecrire le meilleur score
+    fprintf(fich,"%d\n",joueur.score_moy);//ecrire le score moyen
+    fprintf(fich,"%d\n",joueur.nbre_parties);//ecrire le nombre de parties
+    fprintf(fich,"%d\n",joueur.Score_tot);//ecrire le score total
+    fprintf(fich,"%s\n",joueur.nb_carte);//ecrire le numero de carte
+    fprintf(fich,"%s\n",joueur.mois_expiration);//ecrire le mois d'expiratin
+    fprintf(fich,"%s\n",joueur.annee_expiration);//ecrire l'année d'expiration
+    fprintf(fich,"%s\n",joueur.clef_secu);//ecrire la clef de securité
+    fprintf(fich,"%d\n",joueur.nbre_ToM);//ecrire le score total
+    fclose(fich);//ferme le ficher
+}
+void CONNEXION_NEW_JOUEUR (struct Joueur *joueur, int *retour,struct Classement **tabClassement, int *tailleClassement)// creation d'un compte joueur
+{
+    LOGO2();
+
+    FILE*fich;// le fichier
+    char nomFichier[NB_LETTRES+1];//le nom du fichier
+    printf("                                    Création d'un nouveau compte \n\n\n");
+    printf("  Quel est ton prénom ? --Tape 'r' pour retourner à la page précédente--\n");//demander le nom du joueur
+    scanf("%s",&((*joueur).nom));//lire le nom du joueur
+    fflush(stdin);//vider la mémoire tampon
+    if(strcmp((*joueur).nom,"r")==0)//si la reponse du joueur est "r"
+    {
+        *retour=3; // aller au menu
+        system("cls");
+    }
+    else
+    {
+        (*retour)=0;
+        sprintf(nomFichier,"Joueurs\\%s.txt",(*joueur).nom);//ecrire le nom du joueur
+        fich=fopen(nomFichier,"r");//ouvrir le fichier en mode lecture
+        while (fich!=NULL) // si l'utilisateur tape le nom d'un fichier déjà existant
+        {
+            fclose(fich);//fermer le fichier
+            printf("  Un joueur a déja créé un compte avec ce prénom!\n\n  Tapez une autre nom :%c",1);
+            scanf("%s",&((*joueur).nom));//lire le nom du joueur
+            fflush(stdin);
+            sprintf(nomFichier,"Joueurs\\%s.txt",(*joueur).nom);//ecrire le nom du joueur
+            fich=fopen(nomFichier,"r");//ouverture du fichier en lecture
+        }
+        printf("  Mot de passe : %c",1);// demander le mot de passe
+        scanf("%s",&((*joueur).mot_de_passe));//lire le mot de passe du joueur
+        fflush(stdin);//vider la mémoire tampon
+        (*joueur).nb_joker=10;//initialiser le nombre de jokers a 10
+        (*joueur).meilleur_score=0;//initialiser le meilleur score à 0
+        (*joueur).score_moy=0;//initialiser le score moyen a 0
+        (*joueur).nbre_parties=0;//initialiser le nombre de parties à 0
+        (*joueur).Score_tot=0;//initialiser le score total à 0
+        (*joueur).nbre_ToM=0;//initialiser le nombre de ToM à 0
+        strcpy((*joueur).nb_carte,"0");//copier "0" pour le numero de carte
+        strcpy((*joueur).mois_expiration,"0");//copier "0" pour le mois d"expiration
+        strcpy((*joueur).annee_expiration,"0");//copier "0" pour l'année d'expiration
+        strcpy((*joueur).clef_secu,"0");//copier "0" pour la clef de secu
+        NEW_JOUEUR_CLASSEMENT(&*tabClassement,&*tailleClassement,*joueur);// inclure le nouveau joueur dans le classement
+        SAUVEGARDE_JOUEUR(*joueur);//sauvegarder les données du joueurs
+        printf("\n\n\n");
+        COULEUR(12,15);
+        printf("                                    %c %c %c Création réussie %c %c %c\n",26,26,26,27,27,27);
+        COULEUR(0,15);
+        Sleep(1000);
+        system("cls");
+    }
+}
+struct Joueur CONNEXION_JOUEUR(int *retour)// le joueur se connecte
+{
+    FILE *fich; // le fichier
+    struct Joueur joueur;// structure joueur de type joueur
+    char nomFichier[NB_LETTRES+1];
+    char mot_de_passe[NB_LETTRES+1];
+    LOGO2();
+    printf("                                      Connexion à ton compte \n\n\n");
+    printf(" --Tape 'r' pour retourner à la page précédente--\n\n");//demander le nom d'utilisateur
+    printf("PSEUDO:");
+    scanf("%s",&joueur.nom);//lire le nom d'utilisateur
+    fflush(stdin);//vider la mémoir tampon
+    if(strcmp((joueur).nom,"r")==0)//si la reponse est "r"
+    {
+        *retour=5; // aller au menu
+        system("cls");
+    }
+    else//sinon
+    {
+        *retour=0;
+        sprintf(nomFichier,"Joueurs\\%s.txt",(joueur).nom);//affecter le nom du joueur au nom du fichier
+        fich=fopen(nomFichier,"r");//ouvrir le fichier en mode lecture
+        while (fich==NULL )// tant que le joueur n'existe pas
+        {
+            printf("Il n'y a pas de compte joueur avec ce pseudo\nTapez un autre pseudo\n%c",1);//demander le nom du joueur
+            scanf("%s",&joueur.nom);//lire le nom
+            fflush(stdin);//vider la mémoire tampon
+            sprintf(nomFichier,"Joueurs\\%s.txt",(joueur).nom);//affecter le nom du joueur au nom du fichier
+            fich=fopen(nomFichier,"r");//ouvrir le fichier en mode lecture
+        }
+        fscanf (fich,"%s",&((joueur).nom));//lire le nom du joueur
+        fscanf(fich,"%s",&((joueur).mot_de_passe));//lire le mot de passe
+        fscanf(fich,"%d",&((joueur).nb_joker));//lire le nombre de jokers
+        fscanf(fich,"%d",&((joueur).meilleur_score));//lire le meilleur score
+        fscanf(fich,"%d",&((joueur).score_moy));//lire le score moyen
+        fscanf(fich,"%d",&((joueur).nbre_parties));//lire le nombre de parties
+        fscanf(fich,"%d",&((joueur).Score_tot));//lire le score total du joueur
+        fscanf(fich,"%s",&((joueur).nb_carte));//lire le numero de carte
+        fscanf(fich,"%s",&((joueur).mois_expiration));//lire la date d'expiration de la carte
+        fscanf(fich,"%s",&((joueur).annee_expiration));//lire l'année d'expiration de la carte
+        fscanf(fich,"%s",&((joueur).clef_secu));//lire la clef de secu
+        fscanf(fich,"%d",&((joueur).nbre_ToM));//lire le nombre de ToM
+        fclose(fich);//fermer le fichier
+
+        printf("MOT DE PASSE:");// demander le mot de passer
+        scanf("%s",&mot_de_passe);//lire le mot de passe
+        fflush(stdin);//vider la mémoire tamon
+        while (strcmp(mot_de_passe,((joueur).mot_de_passe))!=0)// tant que le mot de passe tapé est différent du mot de passe joueur faire
+        {
+            printf("Mot de passe incorrect!\nMot de passe:");//demander le mot de passe du joueur
+            scanf("%s",&mot_de_passe);//lire le mot de passe
+            fflush(stdin);//vider la mémoire tampon
+        }
+        printf("\n\n\n");
+        COULEUR(12,15);
+        printf("                                    %c %c %c Connexion réussie %c %c %c\n",26,26,26,27,27,27);
+        COULEUR(0,15);
+        Sleep(1000);
+        system("cls");
+
+    }
+    return joueur;//retourner à joueur
+}
+void NEW_JOUEUR_CLASSEMENT(struct Classement **tabClassement, int *tailleClassement, struct Joueur joueur)//ajouter le nouveau joueur dans le classement
+{
+    int nvtaille;
+    nvtaille=(*tailleClassement)+1; //Ajouter 1 à la taille
+    (*tabClassement)=realloc((*tabClassement),nvtaille*sizeof(struct Classement));//on change la taille du tableau
+    strcpy((*tabClassement)[nvtaille-1].nom,joueur.nom);  //copier dans la nouvelle case le nom
+    (*tabClassement)[nvtaille-1].score=joueur.score_moy;//copier aussi le score
+    (*tailleClassement)=nvtaille;   //affecter à tailleClassement la nvtaille
+    SAUVEGARDE_CLASSEMENT(*tailleClassement,*tabClassement);
+}
+void JEUX(struct Theme *tab, int taille,struct Joueur *joueur,char tabMotDejaTapes[NB_MOTS_MAX][NB_LETTRES+1])//le jeu
+{
+    int i,j; // des compteurs
+    int choix; // la reponse pour savoir si le joueur utilise un joker
+    int lettre_trouvee;//variable boléenne pour le cadenas afin de verifier que la lettre existe dans le thème
+    int trouve; // variable bolénne pour sortir d'une boucle
+    int score1; // le score quand on entre un mot
+    int score=0; // le score du joueur durant la partie
+    int passer=0; // un cpt pour compter le nombre de fois que l"utilisateur passer une question
+    int num_mot_tire_sort;//variable pour tirer au sort un mot dans chapeau
+    int theme_tire_sort; // le numero du theme tiré au sort
+    int num_lettre_tiree_sort; //le numero de la lettre tirée au sort
+    int nombre_lettre_theme; // le nombre de lettre dans le theme tiré au sort
+    int nombre_mots_par_lettre;// le nombre de mots pour une lettre
+    int nbre_mots=0;// le nombre de mots tapé par le joueur au cours d'une partie
+
+    char reponse[NB_LETTRES+1];//reponse du joueur
+    char Lettre_tiree_sort;//lettre tirée au sort
+    char Lettre_mot_tape;//1er lettre du mot tapé par l'utilisateur
+
+    //variables relatives au temps
+    double secondes=0;// variable pour stocker le temps
+    double secondesCadenas=0;// variable pour stocker le temps
+    time_t depart, arrivee,departCadenas,arriveeCadenas;//variable pour stocker l'heure
+    double temps_final=94;
+
+    COMPTE_A_REBOURS();// laisser le temps au joueur de se préparer pour la parties
+    LOGO2();
+
+    time(&depart);//demarrer le chrono
+    while(secondes<94)//tant que secondes est inférieur a 94'
+    {
+        score1=0; //remettre à 0 le score1 à chaque boulce
+        COULEUR(13,15);
+        for (i=0; i<temps_final-secondes; i++)//Afficher une barre de progression
+        {
+            printf("*");
+        }
+        printf("%.0f\n\n",temps_final-secondes);//Afficher le temps restant
+        COULEUR(0,15);
+        TIRAGE_AU_SORT(tab,taille,&theme_tire_sort,&num_lettre_tiree_sort);//tirer au sort le thème et la lettre
+        Lettre_tiree_sort=((tab)[theme_tire_sort].tabLettres[num_lettre_tiree_sort].lettre);  //affecter la lettre à Lettre_tiree_sort
+retour://lorsque le joueur veut faire retour
+        Lettre_tiree_sort= toupper(Lettre_tiree_sort);//mettre la lettre en majuscule
+        printf("                           ---Theme :  ");
+        COULEUR(12,15);
+        printf( "%s   ",(tab)[theme_tire_sort].nom_theme);//mettre la lettre en minuscule
+        COULEUR(0,15);
+        printf("Lettre : ");
+        COULEUR(9,15);
+        printf("%6c",Lettre_tiree_sort);
+        COULEUR(0,15);
+        printf("    ---\n\n");//Afficher les conditions de jeu
+        VERIFICATION_MOT_DEJA_TAPE (reponse,tabMotDejaTapes,nbre_mots);//Verifier que le joueur ne joue pas avec les meme mots
+        Lettre_tiree_sort=tolower(Lettre_tiree_sort);//remettre la lettre en minucule
+        Lettre_mot_tape=reponse[0];//affecter la premiere lettre de la reponse a lettre tapée
+        if (strcmp(reponse,"j")==0)//si la reponse tapée est 'j' : le joueur accede au menu jocker
+        {
+            if ((*joueur).nb_joker>0) //si le joueur a assez de jokers
+            {
+                trouve=0;//affecter 0 a trouve
+                do
+                {
+                    printf("Quel joker veux tu utiliser ?\n\n\n            1.Cadenas  2.Chapeau  3.Boule de Cristal  4.Retour\n\n");
+                    scanf("%d",&choix);//lire la reponse
+                    fflush(stdin);//vider la memoire tamon
+                    //   system("cls");
+                    if  (choix<1 || choix>4)//si le joueur est inferieur à 1 ou superieur à 4
+                    {
+                        printf("Tu dois taper un chiffre entre 1 et 3 ");
+                    }
+                }
+                while (choix<1 || choix>4);//Tant que choix est inferieur à 1 et superieur a 4
+                if (choix==1)//si le joueur veut utiliser un joker
+                {
+                    (*joueur).nb_joker--;//le joueur a un joker en moins
+                    time(&arrivee);//arreter le 1er chrono
+                    secondes=difftime(arrivee,depart);//calculer le temps
+                    time(&departCadenas);//lancer le 2ieme chrono pour le temps du cadenas
+                    do //Faire
+                    {
+                        i=0;//initialiser a chaque boucle i à 0
+                        j=0;//initialiser a chaque boucle j à 0
+                        trouve=0;//initialiser a chaque boucle trouve à 0
+                        lettre_trouvee=0;//initialiser a chaque boucle lettre_trouvee à 0
+                        printf("\n");
+                        printf("                                          CADENAS\n\n\n");
+                        printf("                  ---Tape un mot correspondant au Thème :  ");
+                        COULEUR(12,15);
+                        printf("%s",(tab)[theme_tire_sort].nom_theme,&nbre_mots);
+                        COULEUR(0,15);
+                        printf("   ---\n\n");
+                        VERIFICATION_MOT_DEJA_TAPE (reponse,tabMotDejaTapes,nbre_mots);//Verifier que le joueur ne joue pas avec les memes mots
+                        Lettre_mot_tape=reponse[0];//Affecter la premiere letttre du mot a Lettre_mot_tape
+                        nombre_lettre_theme=(tab)[theme_tire_sort].taille_theme;//affecter taille_theme à nombre lettre theme
+                        while (i<nombre_lettre_theme  && lettre_trouvee==0)//tant qu'on a pas parcouru toutes les lettres du theme et que lettre trouvée est égale à 0
+                        {
+                            if (tab[theme_tire_sort].tabLettres[i].lettre==Lettre_mot_tape) //si on trouve la lettre dans le thème
+                            {
+                                nombre_mots_par_lettre=(tab)[theme_tire_sort].tabLettres[i].taille_lettre;//Affecter le nombre de lettre de mot de la lettre à nombre mots par lettre
+                                lettre_trouvee=1;//Affecter 0 à lettre trouvée pour arreter la boucle
+                                while (j<nombre_mots_par_lettre && trouve==0)//tant qu'on a pas atteint la fin tableau ou que le mot n'a pas été trouvé
+                                {
+                                    if(strcmp((tab[theme_tire_sort].tabLettres[i].tabMots[j].mot),reponse)==0)//si on trouve le mot dans la lettre
+                                    {
+                                        COULEUR(10,15);
+                                        printf("                                          ---BRAVO!---\n");
+                                        COULEUR(0,15);
+                                        printf("                                    ---Tu gagnes %d points---\n\n\n\n",tab[theme_tire_sort].tabLettres[i].tabMots[j].point);
+                                        trouve=1;//Affecter 1 à trouver pour arreter la boucle
+                                        score=score+(tab[theme_tire_sort].tabLettres[i].tabMots[j].point); //affectter le point du mot a score
+                                        tab[theme_tire_sort].tabLettres[i].tabMots[j].apparition++;//ajouter 1 à l'apparition du mot
+                                        strcpy(tabMotDejaTapes[nbre_mots],reponse);//copier dans la case du tableau le mot tapé
+                                        nbre_mots++;//ajouter 1 au nombre juste de mots tapées
+                                    }
+                                    else//sinon
+                                    {
+                                        j++;//passer a la case suivante
+                                    }
+                                }
+                            }
+                            else//sinon
+                            {
+                                i++;//passer à la case suivante
+                            }
+                        }
+                        if (lettre_trouvee==0  || trouve==0)//si on a pas trouve la lettre ou le mot
+                        {
+                            COULEUR(4,15);
+                            printf("                           ---Désolé ce mot n'est pas dans le thème---\n\n");//le joueur ne gagne pas de point
+                            COULEUR(0,15);
+                        }
+                        time(&arriveeCadenas);//arreter le chrono
+                        secondesCadenas= difftime(arriveeCadenas, departCadenas);//Calculer le temps
+                        secondesCadenas=secondesCadenas+secondes;//faire le temps total d'exécution
+                        COULEUR(13,15);
+                        for (i=0; i<temps_final-secondesCadenas; i++)//Afficher une barre de progression
+                        {
+                            printf("*");
+                        }
+                        printf("%.0f\n\n",temps_final-secondesCadenas);//Afficher le temps restant
+                        COULEUR(0,15);
+                    }
+                    while (trouve==1 && secondesCadenas<94);//tant qu'on trouve un mot du thème faire et que le joueur ne depasse pas le temps
+                    printf("                                     FIN CADENAS\n\n\n");
+                }
+
+                else if (choix==2)
+                {
+                    printf("                                            CHAPEAU\n\n\n\n");
+                    trouve=0;
+                    (*joueur).nb_joker--; //le joueur a un joker en moins
+                    do
+                    {
+                        trouve=0;
+                        i=0;
+                        num_mot_tire_sort=rand()%((tab)[theme_tire_sort].tabLettres[num_lettre_tiree_sort].taille_lettre); //tirer au sort un nombre entre 0 et le nombre de mot dans la lettre tirée au sort
+                        while (i<(tab)[theme_tire_sort].tabLettres[num_lettre_tiree_sort].taille_lettre && trouve==0)
+                        {
+                            if (strcmp(tab[theme_tire_sort].tabLettres[num_lettre_tiree_sort].tabMots[num_mot_tire_sort].mot,tabMotDejaTapes[i])==0)
+                            {
+                                trouve=1;
+                            }
+                            else
+                            {
+                                i++;
+                            }
+                        }
+                    }
+                    while (trouve==1);
+                    printf("                                ---Tu gagnes %d points grâce à %s---\n_n\n",(tab)[theme_tire_sort].tabLettres[num_lettre_tiree_sort].tabMots[num_mot_tire_sort].point,(tab)[theme_tire_sort].tabLettres[num_lettre_tiree_sort].tabMots[num_mot_tire_sort].mot);
+                    score=score+(tab[theme_tire_sort].tabLettres[num_lettre_tiree_sort].tabMots[num_mot_tire_sort].point);//Affecter le nombre de point du mot à score
+                    strcpy(tabMotDejaTapes[nbre_mots],(tab)[theme_tire_sort].tabLettres[num_lettre_tiree_sort].tabMots[num_mot_tire_sort].mot);//copier dans la case du tableau le mot tapé
+                    nbre_mots++;//ajouter 1 au nombre juste de mots tapées
+                }
+                else if (choix==3)
+                {
+                    (*joueur).nb_joker--; //le joueur a un joker en moins
+                    time(&arrivee);//arreter le 1er chrono
+                    secondes=difftime(arrivee,depart);//calculer le temps
+                    BOULE_DE_CRISTAL(tab,taille,&score,tabMotDejaTapes,&nbre_mots,&secondes);
+                }
+                else
+                {
+                    goto retour;//revenir a la question sans utiliser de joker
+                }
+            }
+            else//Sinon
+            {
+                printf("                         ---Tu n'as pas assez de jokers pour pouvoir jouer---\n\n\n");//le joueur ne peut pas utiliser de joker
+                goto retour;
+            }
+        }
+        else if (strcmp(reponse,"p")==0) //sinon si le joueur tape "p"
+        {
+            printf("---Tu perds 3 secondes---\n");//il perd 3 secondes
+            passer++;//ajouter 1 à passer
+        }
+
+        else//sinon
+        {
+            VERIFICATION_MOT_JUSTE(tab,reponse,Lettre_tiree_sort,theme_tire_sort,num_lettre_tiree_sort,&score1,& nbre_mots,tabMotDejaTapes);//entrer un mot sans utiliser de joker
+            score=score+score1;//ajoueter score1 au score de la partie
+        }
+        time(&arrivee);//Arreter le chrono
+        secondes= difftime(arrivee, depart);//calculer le temps
+        if (passer!=0)//si le joueur a passer des questions
+        {
+            secondes=secondes+(3*passer); //Ajouter 3 secondes a chaque fois que le joueur a passé une question
+        }
+    }
+    printf("                            >>>Ton score est de %d points<<<\n",score);
+    system("PAUSE");
+    system("cls");
+    if (score>(*joueur).meilleur_score)//si le score de la partie est plus grand que le meilleur score actuel du joueur
+    {
+        (*joueur).meilleur_score=score;//affecter le score au meilleur score du joueur
+    }
+    (*joueur).Score_tot=((*joueur).Score_tot)+score;//ajouter le score de la partie au score total du joueur
+    (*joueur).nbre_parties++;//Augementer le nombre de parties
+    (*joueur).score_moy=((*joueur).Score_tot/(*joueur).nbre_parties);//calculer le score moyen du joueur
+}
+void TIRAGE_AU_SORT (struct Theme *tab,int taille, int *theme_tire_sort,int *num_lettre_tiree_sort)//tirer au sort un theme et un mot
+{
+    int nombre_lettre_theme;// le nombre de lettre dans un theme
+
+    *theme_tire_sort=rand()%(taille);// tirer au sort un theme entre 0 et le nombre des themes
+    nombre_lettre_theme=(tab)[*theme_tire_sort].taille_theme; // affecter le nombre de taille du theme à nombre_lettre_theme
+    *num_lettre_tiree_sort=rand()%(nombre_lettre_theme); // tirer au sort une lettre allant de 0 à nombre_lettre_theme
+}
+void VERIFICATION_MOT_DEJA_TAPE ( char mot_tape[NB_LETTRES+1],char tabMotDejaTapes[NB_MOTS_MAX][NB_LETTRES+1], int nombre_mots)//Verifier que le joueur ne tape pas les meme mots
+{
+    int i;// compteur pour parcourir le tableau tabMotDejaTape
+    int refaire;// variable boléenne pour recommencer la boucle
+    do
+    {
+        i=0;
+        refaire=0;
+        scanf("%s",mot_tape);//lire la reponse du joueur
+        strlwr(mot_tape);
+        fflush(stdin); //vider la mémoire tampon
+        while (i<nombre_mots && refaire==0)//tant qu'on a pas parcouru tout le tableau ou que le contenu de la case n'est pas "rien"
+        {
+            if (strcmp(tabMotDejaTapes[i],(mot_tape))==0)//si le mot est deja dans le tableau
+            {
+                printf(" !!!Ce mot a déjà été tapé!!! Tape s'en autre mot: \n");
+                refaire=1;//affecter 1 à refaire
+            }
+            else//sinon
+            {
+                i++;//passer à la case suivante
+            }
+        }
+    }
+    while (refaire==1);//tant que refaire est égal à 1
+}
+
+void VERIFICATION_MOT_JUSTE(struct Theme *tab,char mot_tape[NB_LETTRES+1],char Lettre_tiree_au_sort, int theme_tire_sort, int num_lettre_tiree_sort, int *point_mot_trouve,int *nombre_mots,char tabMotDejaTapes[30][NB_LETTRES+1])//verifier que le mot est un mot du theme
+{
+    char Lettre_mot_tape;// premiere lettre du mot tapé par le joueur
+    int trouve=0; // varirable boléenne pour sortir de la boucle pour trouver un mot
+    int i=0;//un compteur pour parcourir le tableau
+    Lettre_mot_tape=mot_tape[0];//affecter à lettre mot tape la premiere lettre du mot tapé par l'utilisateur
+    if (Lettre_mot_tape==Lettre_tiree_au_sort) //si la lettre du mot tapé et la lettre tirée au sort sont identiques
+    {
+        while (trouve==0 && i<(tab)[theme_tire_sort].tabLettres[num_lettre_tiree_sort].taille_lettre ) //tant qu'on a pas atteint la fin du tableau et que trouve est égale à 0 faire
+        {
+            if(strcmp((tab)[theme_tire_sort].tabLettres[num_lettre_tiree_sort].tabMots[i].mot,mot_tape)==0)//si la comparaison du mot et de la reponse est identique
+            {
+                trouve=1;//Affecter 1 à trouve pour arreter la boucle
+                *point_mot_trouve=(tab)[theme_tire_sort].tabLettres[num_lettre_tiree_sort].tabMots[i].point;//affecter a point_mot_trouve le nombre de point du mot
+                COULEUR(10,15);
+                printf("                                      ---BRAVO!---\n");
+                COULEUR(0,15);
+                printf("                                ---Tu gagnes %d points---\n\n\n",*point_mot_trouve);
+
+                (tab)[theme_tire_sort].tabLettres[num_lettre_tiree_sort].tabMots[i].apparition++;//Ajouter 1 au nombre d'apparitions du mot
+                strcpy(tabMotDejaTapes[*nombre_mots],mot_tape);//copier dans la case du tableau le mot tapé
+                (*nombre_mots)++;//ajouter 1 au nombre juste de mots tapées
+            }
+            else//sinon
+            {
+
+                i++;//passer à la case suivante
+            }
+        }
+        if (trouve==0) //si le mot n'a pas été touvé
+        {
+            COULEUR(4,15);
+            printf("                              ---Désolé nous n'avons pas trouvé ce mot---\n\n\n"); //le joueur perd
+            COULEUR(0,15);
+        }
+    }
+    else//sinon
+    {
+        printf("                         ---Tu n'as pas tapé un mot commençant par %c ---\n",Lettre_tiree_au_sort);//le joueur perd
+    }
+}
+
+
+void BOULE_DE_CRISTAL (struct Theme *tab, int taille,int *scoreBoule,char tabMotDejaTapes[NB_MOTS_MAX][NB_LETTRES+1],int *nombre_mots,double *secondeBC)//joker boule de cristal
+{
+    system("cls");
+    LOGO2();
+    double temps_total=*secondeBC;//le temps total depuis le debut de la partie
+    double temps_finalBC=94; // variable poiur afficher le temps restant
+    double secondesBC_interne=0;//le temps de la boule de cristal
+    time_t departBC, arriveeBC; //variable temps arrive temps depart
+
+    int tabBouleDeCristal [10][2];// un tableau de 10 lignes et de 2 colones pour stocker les numeros de theme et les numeros de lettre tiré au sort
+    int i,j,k;//Des compteurs
+    int score=0;//le score de la boule de cristal
+    int passer=0; //si le joueur passer des questions
+    int Ttheme_tire_sort; // le numero du theme tiré au sort
+    int Nnum_lettre_tiree_sort; //le numero de la lettre tirée au sort
+    int nombre_lettre_theme; // le nombre de lettre dans le theme tiré au sort
+    char reponse[NB_LETTRES+1];//la reponse du joueur
+    char Lettre_tiree_sort;//la lettre tirée au sort
+
+    for (i=0; i<10; i++)//pour i allant de 0 a 9 (initialiser toutes les cases)
+    {
+        for (j=0; j<2; j++)//pour j allant de 1 à 1
+        {
+            tabBouleDeCristal[i][j]=0;//mettre 0 dans tous les cases
+        }
+    }
+    printf("                                         BOULE DE CRISTAL\n\n\n\n");
+    time(&departBC);//demarrer le chrono boule de cristal
+    for (i=0; i<10; i++)//pour les 10 tirages au sort
+    {
+        TIRAGE_AU_SORT (tab,taille,&Ttheme_tire_sort,&Nnum_lettre_tiree_sort);//tirer au sort un theme et une lettre
+        Lettre_tiree_sort=((tab)[Ttheme_tire_sort].tabLettres[Nnum_lettre_tiree_sort].lettre); //affecter à lettre tirée au sort la valeur de la case définit par le theme tiré au sort et la lettre tirée au sort
+        Lettre_tiree_sort= toupper(Lettre_tiree_sort);//mettre la lettre en majuscule
+        printf("            ---Theme :  ");
+        COULEUR(12,15);
+        printf( "%25s   ",(tab)[Ttheme_tire_sort].nom_theme);//mettre la lettre en minuscule
+        COULEUR(0,15);
+        printf("Lettre : ");
+        COULEUR(9,15);
+        printf("%6c",Lettre_tiree_sort);
+        COULEUR(0,15);
+        printf("    ---\n\n");//Afficher les conditions de jeu
+        tabBouleDeCristal[i][0]=Ttheme_tire_sort;   //affecter a la i ligne de la 1ere colonne le numero du theme tiré au sort
+        tabBouleDeCristal[i][1]=Nnum_lettre_tiree_sort;//affecter à la i ligne de la 2ième colonne le numero de la lettre tirée au sort
+    }
+    Sleep(5000);//Afficher les 10 thèmes pendant 5 secondes
+    system("cls");//Effacer l'écran
+    i=0;//affecter 0 a i
+    LOGO2();
+    while (temps_total<=94 && i<10) //tant que le temps est inferieur à 94 et que i est inferieur à 94'
+    {
+        Ttheme_tire_sort=tabBouleDeCristal[i][0];// affecter au theme tiré au sort le numero contenu dans la i ligne de la 1ere colonne
+        Nnum_lettre_tiree_sort=tabBouleDeCristal[i][1];// Affecter a la lettre tirée au sort le numero contenu dans la i ligne de la 2ieme colonne
+        Lettre_tiree_sort=((tab)[Ttheme_tire_sort].tabLettres[Nnum_lettre_tiree_sort].lettre); //affecter à lettre tirée au sort la valeur de la case définit par le theme tiré au sort et la lettre tirée au sort
+        Lettre_tiree_sort= toupper((tab)[Ttheme_tire_sort].tabLettres[Nnum_lettre_tiree_sort].lettre);
+        printf("            ---Theme :  ");
+        COULEUR(12,15);
+        printf( "%25s   ",tab[Ttheme_tire_sort].nom_theme);//mettre la lettre en minuscule
+        COULEUR(0,15);
+        printf("Lettre : ");
+        COULEUR(9,15);
+        printf("%6c",Lettre_tiree_sort);
+        COULEUR(0,15);
+        printf("    ---\n\n");//Afficher les conditions de jeu
+        Lettre_tiree_sort=tolower(Lettre_tiree_sort);
+        VERIFICATION_MOT_DEJA_TAPE (reponse,tabMotDejaTapes,*nombre_mots);//Verifier que le joueur ne joue pas avec les memes mots
+        if (strcmp(reponse,"p")==0)//si le joueur tape p
+        {
+            passer++;//Ajouter 1 a passer
+        }
+        else//sinon
+        {
+            VERIFICATION_MOT_JUSTE(tab,reponse,Lettre_tiree_sort,Ttheme_tire_sort,Nnum_lettre_tiree_sort,&score,&*nombre_mots,tabMotDejaTapes);//entrer un mot
+            (*scoreBoule)=(*scoreBoule)+score;//ajouter le socre du mot a scoreBoule
+        }
+        time(&arriveeBC);//Arreter le chrono
+        secondesBC_interne=difftime(arriveeBC,departBC);//calculer le temps dans la boule de cristal
+        temps_total=*secondeBC+secondesBC_interne;//caculer le score total
+         if (passer!=0)//si le joueur a passer des questions
+        {
+            temps_total=temps_total+(3*passer); //Ajouter 3 secondes a chaque fois que le joueur a passé une question
+        }
+       COULEUR(13,15);
+        for (k=0; k<temps_finalBC-temps_total; k++)//Afficher une barre de progression
+        {
+            printf("*");
+        }
+       // printf("total=%f final=%f\n",temps_total, temps_finalBC);
+       printf("%.0f\n\n",temps_finalBC-temps_total);//Afficher le temps restant
+       COULEUR(0,15);
+        i++;//passer à la question suivante
+    }
+
+}
+void AFFECTER_SCORE_MOY_CLASSEMENT(struct Joueur joueur,struct Classement *tabClassement,int tailleClassement)//mettre a jour le nombre de points pour le classement
+{
+    int trouve=0;
+    int i=0;
+    while (i<tailleClassement && trouve==0)
+    {
+        if (strcmp(tabClassement[i].nom,joueur.nom)==0)
+        {
+            tabClassement[i].score=joueur.score_moy;
+            trouve=1;
+        }
+        else
+        {
+            i++;
+        }
+    }
+}
+
+
+
+void COMPTE_JOUEUR (struct Joueur *joueur,struct Classement *tabClassement, int tailleClassement)// les statistiques du joueur
+{
+
+    char achat[NB_LETTRES+1];//la reponse du joueur
+    int trouve;// variable boléenne pour arreter la boucle de parcours du tableau
+    int i;// un compteur pour parcourir le tabClassement
+    do
+    {
+        i=0;
+        trouve=0;
+        LOGO2();//Afficher le logo
+        printf("       %c %s voici tes Statistiques :\n\n ",16,(*joueur).nom);//afficher le nom
+        printf("            %c Ton meilleur score : %d points\n\n",16,(*joueur).meilleur_score); //afficher le meilleur score au cours d'une partie
+        printf("             %c Ton score moyen sur %d parties jouées est de %d points\n\n",16,((*joueur).nbre_parties),(*joueur).score_moy);//affichage du score moyen du joueur sur x parties
+        CLASSEMENT_JOUEURS(tailleClassement,tabClassement);//faire le classement du joueur
+        SAUVEGARDE_CLASSEMENT(tailleClassement,tabClassement);//sauvegarder le classement
+        while (i<tailleClassement && trouve==0)// tant qu'on a pas parcouru tout le tableau et que trouve est égal à 0
+        {
+            if (strcmp(tabClassement[i].nom,(*joueur).nom)==0)//si on trouve le nom du joueur
+            {
+                printf("             %c Classement %d sur %d avec %d points par parties\n\n",16,i+1,tailleClassement,(*joueur).score_moy);//afficher son classement
+                trouve=1;//affecter 1 à trouve
+            }
+            else//sinon
+            {
+                i++;// passer à la case suivante
+            }
+        }
+        printf("             %c Nombre de joker dispo : %d \n\n",16,(*joueur).nb_joker);//afficher le nombre de jokers disponible
+        printf("             %c Nombre de ToM dispo : %d\n\n\n",16,(*joueur).nbre_ToM);
+        printf("      %c Classement général (tape c)\n",15);
+        printf("      %c Acheter des Jokers(Tape a)\n",15); //proposer d'acheter des jockers
+        printf("      %c Tape r si tu veux revenir en arrière\n",15);//Demander et lire si le joueur veut revenir en arriere ou acheter des jokers
+        scanf("%s",&achat);
+        fflush(stdin);
+        if (strcmp(achat,"a")==0)//si la reponse du joueur est "a"
+        {
+            system("cls");
+            ACHAT_JOKER(&(*joueur),tabClassement,tailleClassement);//lanfer le sous programme ACHAT_JOKER
+        }
+        else if (strcmp(achat,"c")==0)//sinon si la réponse du joueur est "c"
+        {
+            system("cls");
+            AFFICHAGE_CLASSEMENT(tailleClassement,tabClassement,*joueur);// afficher le classement general
+        }
+        system("cls");
+    }
+    while(strcmp(achat,"r")!=0);//tant que le joueur veut rester dans le menu statistique
+    system("cls");
+}
+
+void CLASSEMENT_JOUEURS (int tailleClassement,struct Classement *tabClassement)//tri par selection simple
+{
+    int indMax; // indice maximal des éléments non classés
+    int ind; // indice du premier élement non classé
+    int cpt;// un compteur
+
+    //tant qu'il reste dans le tableau des éléments à classer faire
+    for (ind=0; ind<tailleClassement-1; ind++)
+    {
+        //chercher le plus grand des élément non classé
+        indMax=ind;
+        for (cpt=ind+1; cpt<tailleClassement; cpt++)
+        {
+            if (tabClassement[cpt].score>tabClassement[indMax].score)
+            {
+                indMax=cpt;
+            }
+        }
+
+        //le permuter avec le premier des éléments non classés
+        struct Classement tampon;
+        tampon=(tabClassement)[indMax];
+        (tabClassement)[indMax]=(tabClassement)[ind];
+        (tabClassement)[ind]=tampon;
+    }
+}
+
+
+void ACHAT_JOKER(struct Joueur *joueur, struct Classement *tabClassement, int tailleClassement)//Acheter des jokers
+{
+    int score_apres_achat;
+    int prix;
+    int reponse;
+    int quantite;
+    int choix;
+    int nb_ToM; // le nombre de monnaies virtuellemnt le joueur veut
+    do
+    {
+        LOGO2();
+        printf("                          Bienvenue dans la boutique ***JOKERS*** \n\n\n",2,2,2,2,2,2);
+        do
+        {
+            printf("  1-Convertir mon score en ToM   2-Acheter des ToM($$)   3-Acheter des Jokers 4-RETOUR\n",157);
+            scanf("%d",&reponse);
+            fflush(stdin);
+            if (reponse<1 ||reponse>4)
+            {
+                printf("Tu dois taper un chiffre entre 1 et 4\n");
+            }
+        }
+        while (reponse<1 ||reponse>4);// tant que le joueur n'entre pas une valeur comprise entre 1 et 4
+        fflush(stdin);
+
+        if (reponse==1)//si le joueur veut acheter avec son score
+        {
+            printf("********%d points disponible********\n",(*joueur).Score_tot);
+            do
+            {
+                printf("%c%c%cAvec 7 points tu peux acheter 1 ToM%c%c%c\n\n\nCombien de ToM veux tu acheter? (Tu peux en acheter 60 max)\n",26,26,26,27,27,27);
+                scanf("%d",&nb_ToM);
+                fflush(stdin);
+                if (nb_ToM<1 || nb_ToM>60)
+                {
+                    printf("  Tu dois acheter entre 1 et 60 ToM\n");
+                }
+            }
+            while (nb_ToM<1 || nb_ToM>60);// tant que la reponse est inferieur à 1 ou superieur à 60
+            prix=(nb_ToM*7); // le prix des ToM que le joueur veut acheter
+            printf("  Total à payer : %d points\n",prix);
+            if ((*joueur).Score_tot<prix)//si le joueur n'a pas assez de points score moyen
+            {
+                printf("  Tu n'as pas assez de points pour pouvoir te payer des ToM\nContinue à jouer et reviens plus tard !\n ");
+            }
+            else // s'il a assez de point
+            {
+                score_apres_achat=(*joueur).Score_tot-prix; //calculer le nouveau score total
+                printf("  Confirmes-tu que tu souhaites acheter %d ToM pour %d points (Nouveau score : %d points)\n 1.oui 2.non\n",nb_ToM,prix,score_apres_achat);
+                scanf("%d",&reponse);
+                fflush(stdin);
+                VERIFICATION_CHOIX_OUI_NON(&reponse);//verifier que le joueur tape bien 1 ou 2
+                if (reponse==1)//s'il confirme
+                {
+                    //retirer le prix au score total
+                    (*joueur).Score_tot=(*joueur).Score_tot-prix;//diminuer le score total
+                    (*joueur).score_moy=(*joueur).Score_tot/(*joueur).nbre_parties;//calculer le score moyen du joueur
+                    AFFECTER_SCORE_MOY_CLASSEMENT(*joueur,tabClassement,tailleClassement);//affecter la nouveau score du joueur dans le le classement
+                    (*joueur).nbre_ToM=(*joueur).nbre_ToM+nb_ToM;// credité le nombre de ToM
+                    printf("  Ton nouveau score : %d points\nTu as bien été crédité de %d ToM\n\n\n\n",(*joueur).Score_tot,nb_ToM);
+                }
+                else// s'il ne souhaite pas continuer
+                {
+                    printf("  %c%c%cTransaction annulée%c%c%c\n",33,33,33,33,33,33);
+                }
+            }
+        }
+        else if (reponse==2)//s'il veut acheter des jokers avec son argent
+        {
+            if (strcmp((*joueur).nb_carte,"0")==1)//si le joueur a deja entrer un numero de carte
+            {
+                printf("  Tu as déjà une carte bancaire assiociée a ton compte : **** **** **** %c%c%c%c\nSouhaites-tu payer avec la carte enregistrée? 1.Oui 2.Non\n",(*joueur).nb_carte[12],(*joueur).nb_carte[13],(*joueur).nb_carte[14],(*joueur).nb_carte[15]);
+                scanf("%d",&choix);
+                VERIFICATION_CHOIX_OUI_NON(&choix);
+                if (choix==2)//si le joueur veut entre une nouvelle carte
+                {
+                    LOGO2();
+                    NUM_CARTE(&*joueur);
+                    EXPI_MOIS(&*joueur);
+                    EXPI_ANNEE(&*joueur);
+                    CLEF_SECU(&*joueur);
+                }
+            }
+            else if (strcmp((*joueur).nb_carte,"0")==0)//si le joueur a deja entrer un numero de carte
+            {
+                LOGO2();
+                printf("  Entrez vos coordonnées bancaires: \n\n");
+                NUM_CARTE(&*joueur);
+                EXPI_MOIS(&*joueur);
+                EXPI_ANNEE(&*joueur);
+                CLEF_SECU(&*joueur);
+            }
+            do
+            {
+                printf("  Combien de ToM veux tu acheter ? ( Tu peux en acheter 100 au maximun)\n");
+                scanf("%d",&nb_ToM);
+                fflush(stdin);
+                if (nb_ToM<1|| nb_ToM>100)
+                {
+                    printf("  Tu dois taper un nombre entre 1 et 100\n");
+                }
+            }
+            while (nb_ToM<1 || nb_ToM>100 );//tant que le joueur tape un chiffre inferieur à 1 ou superieur à 100
+            prix=(nb_ToM*7);
+            printf("  Tu seras débité de %d$\n\n\n",prix);
+            (*joueur).nbre_ToM=(*joueur).nbre_ToM+nb_ToM;//affecter la monnaie au joueur
+        }
+        else if (reponse==3)//s'il veut acheter des jokers
+        {
+            if ((*joueur).nbre_ToM<2)
+            {
+                printf("Tu n'as pas assez de ToM pour acheter quelque chose! Va acheter des ToM!!!\n\n\n");
+            }
+            else
+            {
+                prix=0;
+                do
+                {
+                    printf("  Quel joker veux tu acheter? Tu disposes de %d ToM\n\n",(*joueur).nbre_ToM);
+                    printf("    1.Cadenas  15ToM\n\n    2.Chapeau  2ToM\n\n    3.Boule de Cristal  25ToM\n\n");
+                    scanf("%d",&reponse);
+                    fflush(stdin);
+                }
+                while (reponse<1 || reponse>3);// tant que le joueur n'a pas choisi entre 1 et 3
+
+                do
+                {
+                    printf("  Quantité ?\n%c",1);
+                    scanf("%d",&quantite);
+                    fflush(stdin);
+                    if (quantite<1 || quantite>20)
+                    {
+                        printf("  Tu ne peux acheter que 20 jokers à la fois!\n");
+                    }
+                }
+                while (quantite<1 || quantite>20);//tant qu'il ne choisit pas une quantité entre 1 et 20
+                switch(reponse)//calculer les différents prix
+                {
+                case 1:
+                    prix=quantite*15;
+                    break;
+                case 2:
+                    prix=quantite*2;
+                    break;
+                case 3:
+                    prix=quantite*25;
+                    break;
+                }
+                if (prix<=(*joueur).nbre_ToM)//si le prix est inférieur au ToM disponible du joueur
+                {
+                    (*joueur).nb_joker=(*joueur).nb_joker+quantite;//Ajouter la quantité au nombre de jokers
+                    (*joueur).nbre_ToM=(*joueur).nbre_ToM-prix;//diminuer le nombre de ToM
+                    printf("  Tes achats ont bien été crédité sur ton compte\n Tu as %d jokers et %d ToM\n\n\n\n",(*joueur).nb_joker,(*joueur).nbre_ToM);
+
+                }
+                else //sinon si le joueur n'a pas assez de ToM
+                {
+                    printf("Tu n'as pas assez ToM\n\n");
+                }
+
+                if (reponse!=4 && (*joueur).nbre_ToM>2);//si le joueur ne veut pas quitter et a assez d'argent
+                {
+                    printf("  Souhaites-tu faire un autre achat? 1-OUI 2-NON\n");
+                    scanf("%d",&choix);
+                    VERIFICATION_CHOIX_OUI_NON(&choix);//verifier qu'il tape bien 1 ou 2
+                }
+            }
+        }
+        system("PAUSE");
+        system("cls");
+    }
+    while (choix!=2 && reponse!=4);// tant que le joueur ne veut pas quitter et a assez d'argent
+    SAUVEGARDE_JOUEUR(*joueur);//sauvegarder les données du joueurs
+    system("cls");
+}
+
+void NUM_CARTE(struct Joueur *joueur)//verifier le numero de carte principal
+{
+    char num_carte[NUM_CARTE_BC+1];//le numero de carte
+    int trouve;// variable boléenne
+    int i; // un cpt
+    do
+    {
+        trouve=0;//initialiser trouve à 0
+        printf("  Entrez les 16 numéros de votre carte bancaire");//Demander et lire les 16 chiffres de la CB
+        scanf("%s",&num_carte);
+        //si la chaine ne mesure pas 16 caractères
+        if (strlen(num_carte)!=16)//s'il n'y a pas 16 chiffres
+        {
+            trouve=1; //affecter 1 a trouver
+        }
+        else //Sinon
+        {
+            i=0;//initialiser i à 0
+            while ( i<16&& trouve==0)//tant qu'on a pas parcouru toute la chaine de caractères
+            {
+                if (num_carte[i]>='0' && num_carte[i]<='9')//si le caractere de la case est bien compris entre 0 et 9
+                {
+                    //affecter ce numero aux information sur le joueur
+                    (*joueur).nb_carte[i]=num_carte[i];//s'il a tapé 16 chiffres (deux conditions respectées) alors
+                    //on affecte la num_carte au numéro de carte
+                    i++;//passer a la case suivante
+                }
+                else
+                {
+                    //si on trouve autre chose que des chiffres compris entre 1 et 9 recommencer
+                    trouve=1;
+                }
+            }
+
+            (*joueur).nb_carte[16]='\0'; //signifier à l'ordinateur la fin de la chaine de caractères
+        }
+    }
+
+    while (trouve==1);//tant qu'on a pas un bon numero de carte
+}
+void EXPI_MOIS(struct Joueur *joueur)//vérification du mois d'expiration à deux chiffres de la carte bancaire (compris entre 1 et 12)
+{
+    char mois[MOIS_EXPI+1];//mois de caractères entrée par l'utilisateur
+    int trouve;
+    int i;
+    do
+    {
+        trouve=0;
+        printf("  Saisissez maintenant le mois d'expiration de la carte\n");
+        scanf("%s",&mois);
+        if (strlen(mois)>2)//si le mois entrée par l'utilisateur fait plus de deux caractères
+        {
+            trouve=1;//alors la première condition n'est pas respectée et on répète la boucle
+            printf("Entrez un mois valide\n");
+        }
+        else if (strlen(mois)==1)//si le mois ne contient qu'un seul caractère
+        {
+            if ((mois[0]>='1') && (mois[0]<='9'))//alors le mois ne doit contenir que des chiffres (compris entre 0 et 9 inclus)
+            {
+                //remplir la chaine de caractere
+                (*joueur).mois_expiration[0]=mois[0];
+                (*joueur).mois_expiration[1]='\0';
+            }
+            else
+            {
+                trouve=1;//si le mois ne contient pas que des chiffres alors la condition n'est pas respectée donc la boucle se répète
+                printf("Entrez un mois valide\n");
+            }
+        }
+        else if (strlen(mois)==2)//si le mois contient deux caractères
+        {
+            if ((mois[0]=='1')&&((mois[1]>='0')&&(mois[1]<='2')))//alors le nombre doit être compris entre 10 et 12 inclus
+            {
+                //remplir la chaine de caractere
+                (*joueur).mois_expiration[0]=mois[0];
+                (*joueur).mois_expiration[1]=mois[1];
+                (*joueur).mois_expiration[2]='\0';
+            }
+            else if (((mois[0]>'1')&&(mois[0]<='9'))&&(mois[1]=='0'))//les multiples de 10 (autre que 10 car inférieur à 12)
+                //ne doivent pas non plus être acceptés (car souvent pris pour des mois d'un seul caractère puisque le 0 n'est pas pris en compte)
+            {
+                trouve=1;
+                printf("Entrez un mois valide\n");
+            }
+            //dans les autres cas
+            else
+            {
+                trouve=1;
+                printf("Entrez un mois valide\n");
+            }
+        }
+
+    }
+    while (trouve==1);//répéter la boucle tant que toutes les conditions ne sont pas respectées
+}
+void EXPI_ANNEE(struct Joueur *joueur)//Vérification des deux derniers chiffres de l'année d'expiration
+{
+    char annee[ANNEE_EXPI+1];
+    int trouve;
+    int i;
+    do
+    {
+        trouve=0;
+        printf("  Tapez l'année d'expiration de la carte\n");
+        scanf("%s",&annee);
+        if (strlen(annee)>2)//même principe que pour la vérification du mois, on n'accepte pas une annee qui contient plus de deux caractères
+        {
+            trouve=1;
+        }
+        else if (strlen(annee)==1)//tout nombre inférieur à 10 pour l'année d'expiration indique que la carte est périmée et donc
+            //non acceptée
+        {
+
+            printf("Carte Expirée\n");
+            trouve=1;
+
+        }
+        else if (strlen(annee)==2)//si la annee contient deux caractères
+        {
+            if ((annee[0]=='1')&&annee[1]=='9')//qui sont tous des chiffres et si le premier chiffre est 1,
+                //alors la annee doit être égal à 19
+            {
+                //remplir la chaine de caractere
+                (*joueur).annee_expiration[0]=annee[0];
+                (*joueur).annee_expiration[1]=annee[1];
+                (*joueur).annee_expiration[2]='\0';
+            }
+            else if((annee[0]=='1')&&((annee[1]>='0')&&(annee[1]<'9')))//si la annee de deux caractères est inférieure à 19, la carte est périmée
+            {
+                printf("Carte Expirée\n");
+                trouve=1;
+            }
+            else if((annee[0]=='2')&&(annee[1]>='0'&& annee[1]<='5'))//si le premier chiffre de la annee de deux caractères est 2.
+                //il faut que le nombre de l'année soit compris entre 20 et 25 (année max)
+            {
+                //remplir la chaine de caractere
+                (*joueur).annee_expiration[0]=annee[0];
+                (*joueur).annee_expiration[1]=annee[1];
+                (*joueur).annee_expiration[2]='\0';
+            }
+
+        }
+    }
+    while (trouve==1);//la boucle se répète tant que les conditions ne sont pas respectées
+}
+void CLEF_SECU(struct Joueur *joueur)//Vérification pour les 3 chiffres de la clé de sécurité de la carte
+{
+    char num_carte[CLEFSECU+1];
+    int trouve;
+    int i;
+    do
+    {
+        trouve=0;
+        printf("  Tapez la clef de sécurité de la carte\n");
+        scanf("%s",&num_carte);
+        if (strlen(num_carte)!=3)//si la chaine ne fait pas une longueur de trois caractères
+        {
+            trouve=1;//la condition n'est pas respectée
+            printf("Clef de securité invalide\n");
+        }
+        else
+        {
+            i=0;
+            while (i<3 &&trouve==0 )
+            {
+                if (num_carte[i]>='0' && num_carte[i]<='9')//si la num_carte fait une longueur de trois et qu'elle ne contient que des chiffres
+                {
+                    //remplir la chaine de caractères
+                    (*joueur).clef_secu[i]=num_carte[i];//alors on affecte chaque caractère de la num_carte à la clé de sécurité
+                    (*joueur).clef_secu[i+1]='\0';
+                    i++;
+                }
+                else
+                {
+                    trouve=1;
+                    printf("Clef de securité invalide\n");
+                }
+            }
+        }
+    }
+    while (trouve==1);//à répéter tant que les conditions ne sont pas respectées (donc demander de retaper le nombre)
+}
+
+void AJOUT_THEME(struct Theme **tab, int *taille, int *nb_mots)//création d'un theme et ajout de mot
+{
+    LOGO2();
+    int theme; // le nom du theme que le joueur veut ajouter
+    int nb_mot; // le nombre de mot que le joueur veut ajouter dans le theme
+    int numLettre;//un compteur pour chaque lettre
+    int trouve=0;//variable boléenne pour arreter la boucle
+    int nvtaille=(*taille)+1;//on ajoute 1 au nombre de theme deja existant
+    int j;//un compteur pour parcourir tous les thèmes
+    char nom_theme[NB_LETTRES+1]; // le nom de theme que le joueur va entrer
+    char mot_tape[NB_LETTRES+1];
+    char Lettre_tapee; // la lettre tapé par l'utilisateur
+    (*tab)=realloc((*tab),nvtaille*sizeof(struct Theme));//agrandir le tableau contenant les thèmes
+    AFFICHAGE_NOMS_THEMES(*tab,*taille);
+    do
+    {
+        trouve=0;
+        j=0;
+        printf(" Quel est le nom du thème que vous voulez ajouter? %c",1);
+        scanf("%s",&nom_theme);
+        fflush(stdin);
+        strupr(nom_theme); //mettre en majuscule la reponse de l'utilisateur
+        while (j<(*taille) && trouve==0)
+        {
+            if (strcmp((*tab)[j].nom_theme,nom_theme)==0)
+            {
+                printf("   Ce thème existe déjà! Tape un autre nom de thème\n\n");
+                trouve=1;
+            }
+            else
+            {
+                j++;//passer à la case suivante
+            }
+        }
+    }
+    while (trouve==1);  // tant que le theme tapé est un thème existant
+    strcpy((*tab)[nvtaille-1].nom_theme,nom_theme); //copier le nom du theme dans la case nvtaille-1 du tableau
+    system("cls");
+    LOGO2();
+    do
+    {
+        printf("   Combien de lettres voulez vous ajouter dans %s?\n",(*tab)[nvtaille-1].nom_theme);
+        scanf("%d",& ((*tab)[nvtaille-1].taille_theme));
+        fflush(stdin);
+        if  ((*tab)[nvtaille-1].taille_theme<1 || (*tab)[nvtaille-1].taille_theme>26)
+        {
+            printf("L'alphabet contient 26 lettres tu ne peux pas aller au delà\n\n");
+        }
+    }
+    while ((*tab)[nvtaille-1].taille_theme<1 || (*tab)[nvtaille-1].taille_theme>26);
+
+    (*tab)[nvtaille-1].tabLettres=malloc(((*tab)[nvtaille-1].taille_theme)*sizeof(struct Lettre));// creer le tableau de lettres
+    for (numLettre=0; numLettre<(*tab)[nvtaille-1].taille_theme; numLettre++)  //pour chaque lettre
+    {
+        do
+        {
+            printf(" Lettre :");
+            scanf("%c", & ((*tab)[nvtaille-1].tabLettres[numLettre].lettre));
+             (*tab)[nvtaille-1].tabLettres[numLettre].lettre=tolower((*tab)[nvtaille-1].tabLettres[numLettre].lettre);
+            int i;
+            trouve=0;
+            if (numLettre !=0)//si on a déja tapé une lettre
+            {
+                while (i<numLettre && trouve==0)
+                {
+                    if (((*tab)[nvtaille-1].tabLettres[numLettre].lettre) == ((*tab)[nvtaille-1].tabLettres[i].lettre))
+                    {
+                        printf("Veuillez entrer une lettre différente de celles entrées précédemment:\n");
+                        scanf("%c", & ((*tab)[nvtaille-1].tabLettres[numLettre].lettre));
+                        (*tab)[nvtaille-1].tabLettres[numLettre].lettre=tolower((*tab)[nvtaille-1].tabLettres[numLettre].lettre);
+                        trouve=1;
+                    }
+                    else
+                    {
+                        i++;
+                    }
+                }
+            }
+        }
+        while (trouve==1);
+        Lettre_tapee=((*tab)[nvtaille-1].tabLettres[numLettre].lettre);
+        Lettre_tapee=tolower(Lettre_tapee);
+        fflush(stdin);
+
+
+        do
+        {
+            printf("Nombre de mots commençant par %c : ", Lettre_tapee);
+            scanf("%d", & ((*tab)[nvtaille-1].tabLettres[numLettre].taille_lettre ));
+            *nb_mots=*nb_mots+((*tab)[nvtaille-1].tabLettres[numLettre].taille_lettre);
+            fflush(stdin);
+
+            if ((*tab)[nvtaille-1].tabLettres[numLettre].taille_lettre <1 ||(*tab)[nvtaille-1].tabLettres[numLettre].taille_lettre>50)
+            {
+                printf("Tu dois ajouter entre 1 et 50 mots\n\n");
+            }
+        }
+        while ((*tab)[nvtaille-1].tabLettres[numLettre].taille_lettre <1 ||(*tab)[nvtaille-1].tabLettres[numLettre].taille_lettre>50);
+        (*tab)[nvtaille-1].tabLettres[numLettre].tabMots = malloc((*tab)[nvtaille-1].tabLettres[numLettre].taille_lettre*sizeof(struct Mot));// creer le tableau de mot
+        for (j=0; j<(*tab)[nvtaille-1].tabLettres[numLettre].taille_lettre; j++)
+        {
+
+            REMPLIR_TAB_MOTS(numLettre, (nvtaille-1),(*tab),Lettre_tapee,0,j,1);
+        }
+
+    }
+    *taille=nvtaille;//affecter nvtaille à taille
+    COULEUR(12,15);
+    printf("                                    %c %c %c THÈMA AJOUTÉ %c %c %c\n",26,26,26,27,27,27);
+    COULEUR(0,15);
+    SAUVEGARDE_THEMES(*taille,*nb_mots,*tab);//Sauvegarder le fichier
+    system("PAUSE");
+    system("cls");
+}
+void AJOUT_MOT (struct Theme **tab, int *taille, int *nb_mots)// ajouter un mot dans un theme
+{
+    LOGO2();
+    int taille_theme;
+    int reponse;//le choix du joueur
+    int trouve;//variable boléenne pour arreter la boucle
+    int nvtaille;
+    int i,j,k;// des compteur
+    char PremLettreMot;
+    char theme_choisi[NB_LETTRES+1];
+    int numTheme; // numero du theme trouvé
+    char mot_a_ajouter[NB_LETTRES+1];
+    int numLettre;
+    int nb_mot_ajoute;
+
+    int trouve1;
+    AFFICHAGE_NOMS_THEMES(*tab,*taille);
+    i=0;
+    do
+    {
+        reponse=0;
+        trouve=0;
+        i=0;
+        printf("  Dans quel thème veux tu ajouter un mot?  %c",1);
+        scanf("%s",theme_choisi);
+        fflush(stdin);
+        strupr(theme_choisi); //mettre en majuscule la reponse de l'utilisateur
+        while (i<*taille && trouve==0)//tant qu'on a pas atteint la fin du tableau ou qu'on a pas trouve le theme
+        {
+            if (strcmp((*tab)[i].nom_theme,theme_choisi)==0) //si on trouve le theme
+            {
+                trouve=1;//affecter 1 a trouve pour arreter la boucle
+                numTheme=i;
+            }
+            else//sinon
+            {
+                i++;//passer a la case suivante
+            }
+        }
+        if (trouve==0)  //si on ne trouve pas le theme
+        {
+            printf("Nous ne trouvons pas ce thème\n 1.Ajouter dans un thème existant   2.Créer un thème\n%c",1);
+            scanf("%d",&reponse);
+            fflush(stdin);
+            VERIFICATION_CHOIX_OUI_NON(&reponse);// tant que le joueur ne tape pas 1 ou 2
+            if (reponse==2) //sinon si le joueur veut creer un theme
+            {
+                AJOUT_THEME(&*tab,&*taille,&*nb_mots);//diriger l'utilisateur vers le sous programme ajout theme
+            }
+        }
+    }
+    while (reponse==1);
+    system("cls");
+    LOGO2();
+    if (trouve==1) //si on trouve la lettre dans le thème
+    {
+        do
+        {
+            printf("Combien de mot voulez-vous ajouter dans %s ?\n",(*tab)[numTheme].nom_theme);
+            scanf("%d",&nb_mot_ajoute);
+            fflush(stdin);
+            if (nb_mot_ajoute<1 || nb_mot_ajoute>100)
+            {
+                printf("Tu dois entrer entre 1 et 100 mots\n");
+            }
+        }
+        while (nb_mot_ajoute<1 || nb_mot_ajoute>100);
+*nb_mots=*nb_mots+nb_mot_ajoute;
+        for (k=0; k<nb_mot_ajoute; k++)
+        {
+            do
+            {
+                i=0;
+                j=0;
+                trouve=0;//Affecter 0 a trouv
+                trouve1=0;
+                printf(" Quel mot voulez vous ajouter\n");
+                scanf("%s",&mot_a_ajouter);
+                strlwr(mot_a_ajouter);//mettre en minuscule le mot à ajouter
+                fflush(stdin);
+                PremLettreMot=mot_a_ajouter[0];//recuperer la premiere lettre
+                PremLettreMot=tolower(PremLettreMot);
+                taille_theme=(*tab)[numTheme].taille_theme;// affecter le nombre de lettre du theme à taille_theme
+                while (i<taille_theme&& trouve==0)//tant qu'on a pas parcouru toutes les lettre du theme et qu'on a pas trouvé la lettre faire
+                {
+                    //trouve=0;//a chaque boucle remettre trouve à 0
+                    if (PremLettreMot==(*tab)[numTheme].tabLettres[i].lettre)//si on trouve la lettre dans le theme
+                    {
+                        trouve=1;// affecter 1 a trouve pour sortir de la boucle
+                        //on verifie que le mot n'est pas déjà dans le thème
+                        while (j<(*tab)[numTheme].tabLettres[i].taille_lettre && trouve1==0)//tant qu"on a pas parcouru toutes les lettes et qu'on trouve pas la lettre
+                        {
+                            if (strcmp((*tab)[numTheme].tabLettres[i].tabMots[j].mot,mot_a_ajouter)==0) // si on trouve le mot
+                            {
+                                trouve1=1;//arreter la boucle
+                                printf("Ce mot est déjà dans le thème!\n");
+                            }
+                            else
+                            {
+                                j++;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        i++;//passer à la case suivante
+                    }
+                }
+
+            }
+            while (trouve1==1);
+            if (trouve==1)
+            {
+               numLettre=i;//recuperer la case de la lettre
+            nvtaille=(*tab)[numTheme].tabLettres[numLettre].taille_lettre+1;//
+            (*tab)[numTheme].tabLettres[numLettre].tabMots=realloc((*tab)[numTheme].tabLettres[numLettre].tabMots,nvtaille*sizeof(struct Mot));//Agrandir le tableau de mot
+
+            for (i=(nvtaille-1); i<nvtaille; i++)
+            {
+                REMPLIR_TAB_MOTS(numLettre,numTheme,(*tab),PremLettreMot,mot_a_ajouter,i,0);
+            }
+            ((*tab)[numTheme].tabLettres[numLettre].taille_lettre)++;//augmenter la taille_lettre
+            }
+ else if (trouve==0)//si on a pas la lettre dans le thème
+        {
+
+            (*tab)[numTheme].taille_theme++;
+
+            nvtaille=(*tab)[numTheme].taille_theme;//on augmenter le nombre de lettre
+            (*tab)[numTheme].tabLettres=realloc((*tab)[numTheme].tabLettres,nvtaille*sizeof(struct Lettre));  //agrandir le tableau de lettre
+
+            numLettre = nvtaille-1;
+            (*tab)[numTheme].tabLettres[numLettre].lettre = PremLettreMot;//on affecter la premiere lettre du mot à la lettre
+
+            (*tab)[numTheme].tabLettres[numLettre].taille_lettre=1;//la taille de la lettre est égal à 1
+
+            (*tab)[numTheme].tabLettres[numLettre].tabMots = malloc(1*sizeof(struct Mot));//creer le tableau de mot de la lettre
+            strcpy((*tab)[numTheme].tabLettres[numLettre].tabMots[0].mot,mot_a_ajouter);//Copier le mot dans la case
+            do
+            {
+                printf("Nombre de Points du Mot :\n");
+                scanf("%d",&((*tab)[numTheme].tabLettres[numLettre].tabMots[0].point));//lire le nombre de points du mot
+                fflush(stdin);//vider la mémoire tampon
+                if ((*tab)[numTheme].tabLettres[numLettre].tabMots[0].point<1 ||(*tab)[numTheme].tabLettres[numLettre].tabMots[0].point>3 )
+                {
+                    printf("Le Nmbre de Points doit être positif et ne pas excéder 3\n");
+                }
+            }
+            while ((*tab)[numTheme].tabLettres[numLettre].tabMots[0].point<1 ||(*tab)[numTheme].tabLettres[numLettre].tabMots[0].point>3);//tant que le nombre de point est inferieur à 1 ou superieur à 3
+            (*tab)[numTheme].tabLettres[numLettre].tabMots[0].apparition=0;// affecter 0 à apparition
+
+        }
+        COULEUR(12,15);
+        printf("                                    %c %c %c MOT AJOUTÉ %c %c %c\n",26,26,26,27,27,27);
+        COULEUR(0,15);
+        }
+
+
+    }
+SAUVEGARDE_THEMES(*taille,*nb_mots,*tab);
+system("PAUSE");
+system("cls");
+}
+
+
+void REMPLIR_TAB_MOTS(int numLettre, int numTheme, struct Theme *tab, char PremLettre, char mot_tape[NB_LETTRES+1],int cpt,int ajout_theme)//remplir les informations quand on veut ajouter un mot
+{
+    char PremLettreMot;//la premiere lettre du mot
+    int i,j;//des compteurs
+    int trouve;//Variable boléenne
+    char mot_tape1[NB_LETTRES+1];
+    do
+    {
+
+        if (ajout_theme==1)//si on est dans ajout theme
+        {
+            printf(" Quel mot voulez-vous rajouter dans ce thème?\n");
+            scanf("%s",&mot_tape1);
+            fflush(stdin);
+        }
+        else
+        {
+            strcpy(mot_tape1,mot_tape);//sinon copier la mot_tape dans mot_tape1
+        }
+
+        j=0;// affecter 0 a j
+        trouve=0;// affecter 0 a trouve
+        while (j<(tab)[numTheme].tabLettres[numLettre].taille_lettre && trouve==0)//tant qu'on a pas parcouru tout le tableau et que trouve est égal à 1
+        {
+            if (strcmp(tab[numTheme].tabLettres[numLettre].tabMots[j].mot,mot_tape1)==0)//si on trouve le mot
+            {
+                printf("Ce mot est déjà dans le thème\nEntre un autre mot\n");
+                trouve=1;//affecter 1 a trouve
+            }
+            else//sinon
+            {
+                j++;//passer à la case suivante
+            }
+        }
+    }
+    while (trouve==1);// tant que le mot tapé est dans le thèmes
+    strcpy((tab)[numTheme].tabLettres[numLettre].tabMots[cpt].mot,mot_tape1);// copier le mot_tape dans la case correspondant
+    PremLettreMot=(tab)[numTheme].tabLettres[numLettre].tabMots[cpt].mot[0];//affecter la premiere lettre du mot tapé à PremLettre
+    do
+    {
+        if (PremLettre!=PremLettreMot)//si la lettre tapée et la premiere lettre du mot sont differents
+        {
+            printf("Vous devez taper un mot qui commence par la lettre %c\nQuel mot voulez vous ajouter ?\n",PremLettre);//demander et lire un mot
+            scanf("%s", & ((tab)[numTheme].tabLettres[numLettre].tabMots[cpt].mot));//lire le mot
+            fflush(stdin);//vider la memoire tampon
+            PremLettreMot=(tab)[numTheme].tabLettres[numLettre].tabMots[cpt].mot[0];//recuperer la première lettre du mot
+            trouve=1;//affecter 1 à trouver pour arreter la boucle
+        }
+    }
+    while (trouve==1);// tant que le mot tapé ne commence pas par la lettre
+
+    do
+    {
+        printf("Nombre de Points du Mot :\n");
+        scanf("%d",&((tab)[numTheme].tabLettres[numLettre].tabMots[cpt].point));//lire le nombre de points du mot
+        fflush(stdin);//vider la mémoire tampon
+        if ((tab)[numTheme].tabLettres[numLettre].tabMots[cpt].point<1 ||(tab)[numTheme].tabLettres[numLettre].tabMots[cpt].point>3 )
+        {
+            printf("Le nombre de points doit être positif et ne pas excéder 3\n");
+        }
+    }
+    while ((tab)[numTheme].tabLettres[numLettre].tabMots[cpt].point<1 ||(tab)[numTheme].tabLettres[numLettre].tabMots[cpt].point>3);//tant que le nombre de point est inferieur à 1 ou superieur à 3
+    (tab)[numTheme].tabLettres[numLettre].tabMots[cpt].apparition=0;// affecter 0 à apparition
+
+}
+
+
+void APPARITION (struct Theme *tab, int taille, int nb_mots)
+{
+    srand(time(NULL));
+    int i,j,k;
+    int reenitialiser=nb_mots*(0,67); // calculer 2/3 du nombre total de mots
+    int apparition=0; //compter combien de mots ont 1 point
+
+    //pour tous les themes
+    for (i=0; i<taille; i++)
+    {
+        //pour toutes les lettres du theme
+        for (j=0; j<tab[i].taille_theme; j++)
+        {
+            //pour toutes les mots de la lettre
+            for(k=0; k<tab[i].tabLettres[j].taille_lettre; k++)
+            {
+                //si l'apparition du mot est supérieur à FREQUENT
+                if (tab[i].tabLettres[j].tabMots[k].apparition>FREQUENT)
+                {
+                    tab[i].tabLettres[j].tabMots[k].point=1;//Affecter 1 au mot
+                    apparition++;//ajouter 1
+                }
+                //si l'apparition du mot est comprise entre PEU_FREQUENT et FREQUENT
+                else if (tab[i].tabLettres[j].tabMots[k].apparition>PEU_FREQUENT || tab[i].tabLettres[j].tabMots[k].apparition<FREQUENT)
+                {
+                    tab[i].tabLettres[j].tabMots[k].point=2;//Affecter 2 au mot
+                }
+                else//sinon si le mot est rarement utilisé
+                {
+                    tab[i].tabLettres[j].tabMots[k].point=3;//Affecter 3 au mot
+                }
+            }
+        }
+    }
+    //si on a la majorité des mots qui rapportent 1 points
+
+    if (apparition>reenitialiser)//si plus de 2/3 des mots valent 1 points
+    {
+        for (i=0; i<taille; i++)
+        {
+            //pour toutes les lettres du theme
+            for (j=0; j<tab[i].taille_theme; j++)
+            {
+
+                //pour toutes les mots de la lettre
+                for(k=0; k<tab[i].tabLettres[j].taille_lettre; k++)
+                {
+                    //tirer au sort un chiffre entre 1 et 3
+                    tab[i].tabLettres[j].tabMots[k].point=rand()%3+1;
+                    //Affecter 0 à apparation
+                    tab[i].tabLettres[j].tabMots[k].apparition=0;
+                }
+            }
+        }
+    }
+    SAUVEGARDE_THEMES(taille,nb_mots,tab);
+}
+
+
+void VERIFICATION_CHOIX_OUI_NON(int *choix)
+{
+    while ((*choix)<1 || (*choix)>2)//tant que le joueur ne tape pas 1 ou 2
+    {
+        printf("  Tu dois choisir entre 1.Oui ou 2.Non\n Tu n'as pas d'autres possibilités\n%c ",1);
+        scanf("%d",&(*choix));
+        fflush(stdin);
+    }
+}
+
+void PAGE_ACCEUIL ()// page d'acceuil générale du projet
+{
+
+    printf("Projet d'Algorithmique                                                                      FQ\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+    printf("                                          Projet : \n\n");
+
+    LOGO();
+    printf("\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+    printf("Myra-Louise Bamdé & Paul Collomb                                                     2018/2019\n");
+    system("PAUSE");
+    system  ("cls");
+}
+void LOGO()
+{
+    COULEUR(1,7);
+    printf("                                     .----.     _____                                                                  \n"
+           "                                   .   _   \\   /    /                                                                 \n"
+           "                                  /  .' )   | /    / ,.--.                                                              \n"
+           "                                 |   (_.    //    / //    \\                                                             \n"
+           "                                  \\     ,  //    /  \\\\    |                                                             \n"
+           "                                   `'-'/  //    /  __`'-)/                                                              \n"
+           "                               .-.    /  //    /  |  |  /'                                                              \n"
+           "                               \\  '--'  //    '   |  |                                                                  \n"
+           "                                '-....-'/    '----|  |---.                                                              \n"
+           "                                       /          |  |   |                                                              \n"
+           "                                       '----------|  |---'                                                              \n"
+           "                                                  |  |                                                                  \n"
+           "                                                 /____\\                                                                 \n");
+
+    COULEUR(0,15);
+}
+void LOGO2 ()
+{
+    ////("cls");
+    COULEUR(9,15);
+    printf("                                          _____    ___ _  \n"
+           "                                         |  _  |  /   ( ) \n"
+           "                                         | |_| | / /| |/   \n"
+           "                                         \\____ |/ /_| |   \n"
+           "                                         .___/ /\\___  |   \n"
+           "                                         \\____/     |_/   \n");
+    COULEUR(0,15);
+    printf("\n\n");
+}
+
+int MENU_PRINCIPAL()// affichage du menu principal
+{
+    int choix1;//le choix de l'utilisateur
+    printf("                                      Bienvenue dans le jeu \n");
+    LOGO2();
+    do
+    {
+        // printf("\n\n\n");
+        // system("PAUSE");
+        printf("   1.Connexion          2.Création d'un compte          3.Les Règles du Jeu          4.QUITTER\n\n\n%c",1);
+        scanf("%d",&choix1);
+        fflush(stdin);
+        if ((choix1<1)||(choix1>4))// si le choix1 est inferieur à 1 ou superieur à 4
+        {
+            printf("Choississez un chiffre entre 1 et 4\n\n\n");
+        }
+    }
+    while ((choix1<1)||(choix1>4));//tant que le choix est inferieur à 1 ou superieur 4
+    system("cls");
+    return choix1;// variable de type int a retourner au programme
+}
+int MENU_JOUEUR()// l'interface joueur
+{
+    int choix_joueur;// le choix du joueur
+    LOGO2();
+    do
+    {
+        printf("    1.Jouer     2.Mon Compte     3.Ajouter des thèmes/mots     4.Règle du jeu     5.DECONNEXION\n");
+        scanf("%d",&choix_joueur);
+        fflush(stdin);
+        if (choix_joueur<1||choix_joueur>5)// si le choix1 est inferieur à 1 ou superieur à 5
+        {
+            printf("Choississez un chiffre entre 1 et 5\n");
+        }
+    }
+    while (choix_joueur<1||choix_joueur>5);//tant que le choix est inferieur à 1 ou superieur 4
+    system("cls");
+    return choix_joueur;// variable de type int a retourner au programme
+
+}
+int MENU_REGLE()
+{
+    int choix2;
+    COULEUR(12,15);
+    printf("                                        Voici les Règles de  \n\n");
+    LOGO2();
+    COULEUR(0,15);
+    printf("\n\n");
+    do
+    {
+        printf("   1-Création/Connexion compte   2-Le Jeu  3-Les Jokers  4-Ajouter Thème/Mot   5-RETOUR\n\n%c",1);
+        scanf("%d",&choix2);
+        fflush(stdin);
+        if(choix2<1 || choix2>5)
+        {
+            printf("  Tu dois taper un chiffre entre 1 et 5\n");
+        }
+    }
+    while(choix2<1 || choix2>5);//Tant que l'utilisateur ne tape pas une valeur entre 1 et 5
+    return choix2;
+}
+
+
+
+void REGLES_COURTES()// Affichage d'un résumé des règles
+{
+    LOGO2();
+    printf("Tu as 94' pour taper le maximun de mots justes\nTu as à ta disposition 3 types de jokers\nUn cadenas qui te permet de taper autant de mots que tu veux du même temps tant qu'ils appartiennent au thème.\n"
+           "Un Chapeau tire au sort un mot correspondant au thème et à la lettre et l'attribue comme ta reponse\nLa boule de cristal te permet de voir les 10 prochains thèmes et lettres\n"
+           "Tu as 10 jokers à ta disposition, si tu en veux plus rends toi dans la section 2.\n""ATTENTION tu dois taper les mots en MINUSUCLE SANS ACCENT et SANS ESPACE (tape _ pour signifier un espace\n");
+    system("PAUSE");
+    system("cls");
+}
+
+int MENU_AJOUT_THEMES_MOTS()//affichage du menu ajout theme/mot
+{
+    int choix_ajout_mots_themes;//le choic du joueur
+    LOGO2();
+    do
+    {
+        printf("          1.Ajouter un MOT dans un THEME      2.Ajouter un THEME           3.RETOUR\n");
+        scanf("%d",&choix_ajout_mots_themes);
+        if (choix_ajout_mots_themes<1 || choix_ajout_mots_themes>3)// si le choix est inferieur à 1 ou superieur à 3
+        {
+            printf("Tu dois taper un chiffre entre 1 et 3");
+        }
+    }
+    while (choix_ajout_mots_themes<1 || choix_ajout_mots_themes>3); // tant que le choix est inferieur a 1 ou superieur a 3
+    return choix_ajout_mots_themes;// variable de type int à renvoyer au programmme
+}
+void AFFICHAGE_CLASSEMENT(int tailleClassement,struct Classement *tabClassement,struct Joueur joueur)//afficher le classement
+{
+    LOGO2();
+    int cpt;// un compteur
+    for (cpt=0; cpt<tailleClassement; cpt++)
+    {
+        if (strcmp(tabClassement[cpt].nom,joueur.nom)==0)
+        {
+            COULEUR(10,15);
+            printf("            %d. %s %d\n",cpt+1,tabClassement[cpt].nom,tabClassement[cpt].score);
+            COULEUR(0,15);
+        }
+        else
+        {
+            printf("            %d. %s %d\n",cpt+1,tabClassement[cpt].nom,tabClassement[cpt].score);
+        }
+
+    }
+    printf("\n\n\n");
+    system("PAUSE");
+    system("cls");
+}
+
+void AFFICHAGE_NOMS_THEMES (struct Theme *tab, int taille)//Afficher les thèmes
+{
+    int i;
+    printf("Voici les thèmes existants\n");
+    for (i=0; i<taille; i++)
+    {
+        printf("%c %s\n",16,tab[i].nom_theme);
+    }
+}
+
+void UN()
+{
+    COULEUR(12,15);
+    printf("\n\n\n\n\n\n\n\n\n\n\n");
+    printf("                                        .----------------. \n"
+           "                                       | .--------------. |\n"
+           "                                       | |     __       | |\n"
+           "                                       | |    /  |      | |\n"
+           "                                       | |    `| |      | |\n"
+           "                                       | |     | |      | |\n"
+           "                                       | |    _| |_     | |\n"
+           "                                       | |   |_____|    | |\n"
+           "                                       | |              | |\n"
+           "                                       | '--------------' |\n"
+           "                                         '----------------' \n\n");
+    COULEUR(0,15);
+}
+void DEUX()
+{
+    COULEUR(12,15);
+    printf("\n\n\n\n\n\n\n\n\n\n\n");
+    printf("                                       .----------------.\n "
+           "                                      | .--------------. |\n"
+           "                                       | |    _____     | |\n"
+           "                                       | |   / ___ `.   | |\n"
+           "                                       | |  |_/___) |   | |\n"
+           "                                       | |   .'____.'   | |\n"
+           "                                       | |  / /____     | |\n"
+           "                                       | |  |_______|   | |\n"
+           "                                       | |              | |\n"
+           "                                       | '--------------' |\n"
+           "                                       '----------------' \n");
+
+}
+void TROIS()
+{
+    COULEUR(12,15);
+    printf("\n\n\n\n\n\n\n\n\n\n\n");
+
+    printf("                                       .----------------. \n "
+           "                                      | .--------------. |\n "
+           "                                      | |    ______    | |\n "
+           "                                      | |   / ____ `.  | |\n "
+           "                                      | |   `'  __) |  | |\n "
+           "                                      | |   _  |__ '.  | |\n "
+           "                                      | |  | \\____) |  | |\n "
+           "                                      | |   \\______.'  | |\n "
+           "                                      | |              | |\n "
+           "                                      | '--------------' |\n "
+           "                                       '----------------' \n ");
+}
+void COMPTE_A_REBOURS()
+{
+
+    LOGO2();
+    TROIS();
+    Sleep(1000);
+    system("cls");
+    LOGO2();
+    DEUX();
+    Sleep(1000);
+    system("cls");
+    LOGO2();
+    UN();
+    Sleep(1000);
+    system("cls");
+    COULEUR(0,15);
+
+}
+
+void COULEUR(int texte, int fond)
+{
+    // 0 noir 15 blanc
+    //1 bleu foncé 2 vert foncé 3 turquoise foncé 4 rouge foncé 5 violet foncé 6 vert kaki 7 gris clair 8 gris foncé
+    // 9 bleu fluo 10 vert fluo 11 turquoi fluo 12 rouge fluo 13 violet fluo 14 jaune fluo
+    HANDLE H= GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleTextAttribute(H,fond*16+texte);
+}
+
+
+
+
